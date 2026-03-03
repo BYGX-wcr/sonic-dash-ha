@@ -423,6 +423,57 @@ impl BulkSyncUpdate {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageMetaFlags {
+    SYN,
+    FIN,
+    RST,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwitchoverRequest {
+    // routing info
+    pub dst_actor_id: String,
+    // switchover id (GUID) for tracking
+    pub switchover_id: String,
+    // Flag: start switchover
+    pub flag: MessageMetaFlags,
+}
+
+impl SwitchoverRequest {
+    pub fn new_actor_msg(
+        my_id: &str,
+        dst_id: &str,
+        switchover_id: &str,
+        flag: MessageMetaFlags,
+    ) -> Result<ActorMessage> {
+        ActorMessage::new(
+            Self::msg_key(my_id),
+            &Self {
+                dst_actor_id: dst_id.to_string(),
+                switchover_id: switchover_id.to_string(),
+                flag,
+            },
+        )
+    }
+
+    pub fn to_actor_msg(&self, my_id: &str) -> Result<ActorMessage> {
+        ActorMessage::new(Self::msg_key(my_id), self)
+    }
+
+    pub fn msg_key_prefix() -> &'static str {
+        "SwitchoverRequest|"
+    }
+
+    pub fn msg_key(my_id: &str) -> String {
+        format!("{}{}", Self::msg_key_prefix(), my_id)
+    }
+
+    pub fn is_my_msg(key: &str) -> bool {
+        key.starts_with(Self::msg_key_prefix())
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct SelfNotification {
     // notifications of ha_events happening in the background

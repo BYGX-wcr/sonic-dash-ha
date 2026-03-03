@@ -107,6 +107,15 @@ impl NpuHaScopeActor {
                     error!("Invalid Vote Reply Update!")
                 }
             }
+        } else if SwitchoverRequest::is_my_msg(key) {
+            match self.handle_switchover_request(state, key) {
+                Ok(incoming_event) => {
+                    event = Some(incoming_event);
+                }
+                Err(_e) => {
+                    error!("Invalid Switchover Request!")
+                }
+            }
         } else if HaScopeActorState::is_my_msg(key) {
             match self.handle_ha_state_change(state, key) {
                 Ok(incoming_event) => {
@@ -217,7 +226,15 @@ impl NpuHaScopeActor {
                         return match first_op.as_str() {
                             "activate_role" => Ok(HaEvent::PendingRoleActivationApproved),
                             "flow_reconcile" => Ok(HaEvent::FlowReconciliationApproved),
-                            "switchover" => Ok(HaEvent::SwitchoverApproved),
+                            "switchover" => {
+                                let switchover_id = self
+                                    .base
+                                    .get_npu_ha_scope_state(state.internal())
+                                    .and_then(|s| s.switchover_id)
+                                    .unwrap_or_default();
+                                self.set_npu_switchover_state(state, &switchover_id, "approved")?;
+                                Ok(HaEvent::SwitchoverApproved)
+                            }
                             _ => Ok(HaEvent::None),
                         };
                     }
@@ -623,6 +640,78 @@ impl NpuHaScopeActor {
         Ok(HaEvent::VoteCompleted)
     }
 
+    /// Handle switchover request messages from peer HA scope actor.
+    /// When the standby side transitions to SwitchingToActive, it sends a SwitchoverRequest to the active side.
+    /// The active side validates and transitions to SwitchingToStandby if appropriate.
+    /// Following procedure documented in <https://github.com/sonic-net/SONiC/blob/master/doc/smart-switch/high-availability/smart-switch-ha-hld.md#82-planned-switchover>
+    fn handle_switchover_request(&mut self, state: &mut State, key: &str) -> Result<HaEvent> {
+        let request: Option<SwitchoverRequest> = self.base.decode_hascope_actor_message(state.incoming(), key);
+        let Some(request) = request else {
+            return Err(anyhow!("Failed to decode SwitchoverRequest message"));
+        };
+
+        if request.flag == MessageMetaFlags::FIN {
+            info!(
+                "The switchover request has been accepted by the peer: switchover_id={}",
+                request.switchover_id
+            );
+            self.retry_count = 0;
+            return Ok(HaEvent::None);
+        } else if request.flag == MessageMetaFlags::RST {
+            info!(
+                "The switchover request has been rejected by the peer: switchover_id={}",
+                request.switchover_id
+            );
+
+            if self.retry_count < 3 {
+                self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::SYN, true)?;
+                self.retry_count += 1;
+                return Ok(HaEvent::None);
+            } else {
+                self.retry_count = 0;
+                info!(
+                    "The switchover failed after 3 requests rejected by the peer: switchover_id={}",
+                    request.switchover_id
+                );
+                return Ok(HaEvent::SwitchoverFailed);
+            }
+        }
+
+        // Per HLD: If DPU0 is not in Active state or also has desired state set to Active,
+        // it will reject the SwitchOver request.
+        let my_state = self.current_npu_ha_state(state.internal());
+        if my_state != HaState::Active {
+            info!(
+                "Rejecting SwitchoverRequest from peer: local state is {} (not Active)",
+                my_state.as_str_name()
+            );
+            self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::RST, false)?;
+            return Ok(HaEvent::None);
+        }
+
+        let my_desired_state = self
+            .base
+            .dash_ha_scope_config
+            .as_ref()
+            .map(|c| DesiredHaState::try_from(c.desired_ha_state).unwrap_or(DesiredHaState::Unspecified))
+            .unwrap_or(DesiredHaState::Unspecified);
+        if my_desired_state == DesiredHaState::Active {
+            info!("Rejecting SwitchoverRequest from peer: local desired state is also Active");
+            self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::RST, false)?;
+            return Ok(HaEvent::None);
+        }
+
+        // Accept the switchover request — update switchover tracking state
+        info!(
+            "Accepting SwitchoverRequest from peer with switchover_id={}",
+            request.switchover_id
+        );
+        self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::FIN, false)?;
+        self.set_npu_switchover_state(state, &request.switchover_id, "in_progress")?;
+
+        Ok(HaEvent::SwitchoverRequested)
+    }
+
     /// Handle async self notification messages
     fn handle_self_notification(&mut self, state: &mut State, key: &str) -> Result<HaEvent> {
         let (_internal, incoming, _outgoing) = state.get_all();
@@ -689,6 +778,10 @@ impl NpuHaScopeActor {
                     // When starting from PendingActiveRoleActivation, no need to do bulk sync.
                     // Send BulkSyncCompleted signal to the peer immediately
                     self.send_bulk_sync_completed_to_peer(state)?;
+                } else if *current_state == HaState::SwitchingToActive {
+                    // Per HLD Section 8.2.1 Step 5: Switchover to active is complete.
+                    // Mark switchover as completed on the new active side.
+                    self.complete_switchover(state, "completed")?;
                 }
 
                 // Activate Active role on DPU with a new term
@@ -700,11 +793,33 @@ impl NpuHaScopeActor {
                 let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name(), false, false);
             }
             HaState::Standby => {
-                // The Standby role on DPU should have been activated, this operation is to update the term
+                if *current_state == HaState::SwitchingToStandby {
+                    // Per HLD Section 8.2.1 Step 6: Switchover to standby is complete.
+                    // Mark switchover as completed on the new standby side.
+                    self.complete_switchover(state, "completed")?;
+                } else if *current_state == HaState::SwitchingToActive {
+                    self.complete_switchover(state, "failed")?;
+                }
+                // The Standby role on DPU may have been activated, this operation is to update the term and also ensure the DPU is in standby role if not done previously
                 let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name(), false, false);
             }
             HaState::SwitchingToActive => {
-                // TODO: Send SwitchOver to the peer
+                // Activate switching_to_active role on DPU
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::SwitchingToActive.as_str_name(), false, false);
+
+                // Per HLD Section 8.2.1 Step 3: Send SwitchoverRequest to the active peer.
+                let switchover_id = self
+                    .base
+                    .get_npu_ha_scope_state(state.internal())
+                    .and_then(|s| s.switchover_id)
+                    .unwrap_or_default();
+                self.send_switchover_request_to_peer(state, &switchover_id, MessageMetaFlags::SYN, false)?;
+                self.set_npu_switchover_state(state, &switchover_id, "in_progress")?;
+            }
+            HaState::SwitchingToStandby => {
+                // Per HLD Section 8.2.1 Step 4: The active node received a SwitchoverRequest
+                // and is now transitioning to standby. Activate standby role on DPU.
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name(), false, false);
             }
             HaState::Destroying => {
                 // Activate Dead role on the DPU
@@ -798,7 +913,26 @@ impl NpuHaScopeActor {
                 }
             }
             _ => {
-                // no state transition case
+                // No state transition. Handle special cases that require side effects
+                // without an immediate state change.
+
+                // Per HLD Section 8.2.1 Steps 1-2: When in Standby and desired state changes
+                // to Active, create a pending "switchover" operation and wait for upstream approval.
+                if current_state == HaState::Standby
+                    && event_to_use == HaEvent::DesiredStateChanged
+                    && target_state == TargetState::Active
+                {
+                    let switchover_id = Uuid::new_v4().to_string();
+                    info!("Creating pending switchover operation: {}", &switchover_id);
+
+                    // Record switchover tracking fields in NPU HA scope state
+                    self.set_npu_switchover_state(state, &switchover_id, "pending_approval")?;
+
+                    // Create pending operation so upstream can approve
+                    let operations: Vec<(String, String)> = vec![(switchover_id, "switchover".to_string())];
+                    self.base
+                        .update_npu_ha_scope_state_pending_operations(state, operations, Vec::new())?;
+                }
             }
         }
 
@@ -888,8 +1022,10 @@ impl NpuHaScopeActor {
                 }
             }
             HaState::Active => {
-                if *event == HaEvent::DesiredStateChanged && *target_state == TargetState::Standby {
-                    Some((HaState::SwitchingToStandby, "planned switchover to standby"))
+                // Per HLD Section 8.2.1: The active side transitions to SwitchingToStandby
+                // only when it accepts a SwitchoverRequest from the peer (standby->SwitchingToActive).
+                if *event == HaEvent::SwitchoverRequested {
+                    Some((HaState::SwitchingToStandby, "peer requested switchover"))
                 } else if *event == HaEvent::PeerLost {
                     Some((HaState::Standalone, "peer failure while active"))
                 } else if *event == HaEvent::LocalFailure {
@@ -910,8 +1046,15 @@ impl NpuHaScopeActor {
                 }
             }
             HaState::Standby => {
-                if *target_state == TargetState::Active {
-                    Some((HaState::SwitchingToActive, "planned switchover to active"))
+                // Per HLD Section 8.2.1: Planned switchover is initiated from the standby side.
+                // Step 1-2: When desired state changes to Active, create a pending "switchover"
+                // operation and wait for upstream approval.
+                // Step 3: When SwitchoverApproved, transition to SwitchingToActive.
+                if *event == HaEvent::SwitchoverApproved {
+                    Some((
+                        HaState::SwitchingToActive,
+                        "switchover approved, transitioning to active",
+                    ))
                 } else if *event == HaEvent::PeerLost {
                     Some((HaState::Standalone, "peer failure while standby"))
                 } else {
@@ -925,6 +1068,8 @@ impl NpuHaScopeActor {
                     && self.current_npu_peer_ha_state(state.internal()) == HaState::SwitchingToStandby
                 {
                     Some((HaState::Active, "switchover to active complete"))
+                } else if *event == HaEvent::SwitchoverFailed {
+                    Some((HaState::Standby, "switchover failed"))
                 } else {
                     None
                 }
@@ -1080,6 +1225,44 @@ impl NpuHaScopeActor {
 
         outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
         info!("Sent BulkSyncCompleted to peer {}", peer_actor_id);
+
+        Ok(())
+    }
+
+    /// Send a SwitchoverRequest to the active peer to initiate planned switchover.
+    fn send_switchover_request_to_peer(
+        &self,
+        state: &mut State,
+        switchover_id: &str,
+        flag: MessageMetaFlags,
+        delay: bool,
+    ) -> Result<()> {
+        let (_internal, _incoming, outgoing) = state.get_all();
+
+        let Some(peer_actor_id) = self.base.get_peer_actor_id() else {
+            info!("Cannot send SwitchoverRequest to peer: peer actor ID not available");
+            return Ok(());
+        };
+
+        let msg = SwitchoverRequest::new_actor_msg(&self.base.id, &peer_actor_id, &switchover_id, flag)?;
+
+        if delay {
+            outgoing.send_with_delay(
+                outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id),
+                msg,
+                Duration::from_secs(RETRY_INTERVAL.into()),
+            );
+            info!(
+                "Retry sending SwitchoverRequest to peer {} with a delay: switchover_id={}, flags={}",
+                peer_actor_id, switchover_id, flag as i32
+            );
+        } else {
+            outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
+            info!(
+                "Sent SwitchoverRequest to peer {}: switchover_id={}, flags={}",
+                peer_actor_id, switchover_id, flag as i32
+            );
+        }
 
         Ok(())
     }
@@ -1259,6 +1442,67 @@ impl NpuHaScopeActor {
             flow_sync_session_start_time_in_ms.unwrap_or_default(),
             flow_sync_session_target_server.as_deref().unwrap_or_default()
         );
+        Ok(())
+    }
+
+    /// Update switchover tracking fields in NPU HA scope state.
+    /// Per HLD Section 8.2: These fields track the planned switchover lifecycle:
+    ///   - "pending_approval": Switchover requested, waiting for upstream approval
+    ///   - "approved": Upstream approved the switchover
+    ///   - "in_progress": Switchover is actively in progress
+    ///   - "completed": Switchover finished successfully
+    ///   - "failed": Switchover failed
+    fn set_npu_switchover_state(
+        &mut self,
+        state: &mut State,
+        switchover_id: &str,
+        switchover_state: &str,
+    ) -> Result<()> {
+        let internal = state.internal();
+        let Some(mut npu_state) = self.base.get_npu_ha_scope_state(&*internal) else {
+            return Ok(());
+        };
+
+        npu_state.switchover_id = Some(switchover_id.to_string());
+        npu_state.switchover_state = Some(switchover_state.to_string());
+
+        let now = now_in_millis();
+        match switchover_state {
+            "pending_approval" => {
+                npu_state.switchover_start_time_in_ms = Some(now);
+                npu_state.switchover_end_time_in_ms = None;
+                npu_state.switchover_approved_time_in_ms = None;
+            }
+            "approved" => {
+                npu_state.switchover_approved_time_in_ms = Some(now);
+            }
+            "completed" | "failed" => {
+                npu_state.switchover_end_time_in_ms = Some(now);
+            }
+            _ => {}
+        }
+
+        let fvs = swss_serde::to_field_values(&npu_state)?;
+        internal.get_mut(NpuDashHaScopeState::table_name()).clone_from(&fvs);
+        info!(
+            scope=%self.base.id,
+            "Switchover state updated: id={}, state={}",
+            switchover_id, switchover_state
+        );
+
+        Ok(())
+    }
+
+    /// Mark the current switchover as completed or failed.
+    /// Called when the node finishes transitioning (SwitchingToActive → Active
+    /// or SwitchingToStandby → Standby).
+    fn complete_switchover(&mut self, state: &mut State, outcome: &str) -> Result<()> {
+        let npu_state = self.base.get_npu_ha_scope_state(state.internal());
+        if let Some(ref switchover_id) = npu_state.and_then(|s| s.switchover_id.clone()) {
+            if !switchover_id.is_empty() {
+                self.set_npu_switchover_state(state, switchover_id, outcome)?;
+            }
+        }
         Ok(())
     }
 }
