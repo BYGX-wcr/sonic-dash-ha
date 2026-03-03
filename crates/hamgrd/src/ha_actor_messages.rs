@@ -146,7 +146,7 @@ impl HaSetActorState {
         ActorMessage::new(
             Self::msg_key(my_id),
             &Self {
-                up: true,
+                up,
                 ha_set,
                 vdpu_ids: vdpu_ids.to_owned(),
             },
@@ -425,9 +425,9 @@ impl BulkSyncUpdate {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageMetaFlags {
-    SYN,
-    FIN,
-    RST,
+    Syn,
+    Fin,
+    Rst,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]

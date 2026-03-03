@@ -122,7 +122,7 @@ impl HaScopeBase {
         match msg.deserialize_data() {
             Ok(data) => Some(data),
             Err(e) => {
-                error!("Failed to deserialize VoteReply from message: {}", e);
+                error!("Failed to deserialize data from message: {}", e);
                 None
             }
         }

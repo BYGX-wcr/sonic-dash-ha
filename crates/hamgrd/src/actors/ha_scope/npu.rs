@@ -20,7 +20,7 @@ pub struct NpuHaScopeActor {
     pub(super) base: HaScopeBase,
     /// Target state that HAmgrd should transition to upon HA events
     pub(super) target_ha_scope_state: Option<TargetState>,
-    /// Retry count used for voting
+    /// Retry count
     pub(super) retry_count: u32,
     /// Is peer connected?
     pub(super) peer_connected: bool,
@@ -650,21 +650,21 @@ impl NpuHaScopeActor {
             return Err(anyhow!("Failed to decode SwitchoverRequest message"));
         };
 
-        if request.flag == MessageMetaFlags::FIN {
+        if request.flag == MessageMetaFlags::Fin {
             info!(
                 "The switchover request has been accepted by the peer: switchover_id={}",
                 request.switchover_id
             );
             self.retry_count = 0;
             return Ok(HaEvent::None);
-        } else if request.flag == MessageMetaFlags::RST {
+        } else if request.flag == MessageMetaFlags::Rst {
             info!(
                 "The switchover request has been rejected by the peer: switchover_id={}",
                 request.switchover_id
             );
 
             if self.retry_count < 3 {
-                self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::SYN, true)?;
+                self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::Syn, true)?;
                 self.retry_count += 1;
                 return Ok(HaEvent::None);
             } else {
@@ -685,7 +685,7 @@ impl NpuHaScopeActor {
                 "Rejecting SwitchoverRequest from peer: local state is {} (not Active)",
                 my_state.as_str_name()
             );
-            self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::RST, false)?;
+            self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::Rst, false)?;
             return Ok(HaEvent::None);
         }
 
@@ -697,7 +697,7 @@ impl NpuHaScopeActor {
             .unwrap_or(DesiredHaState::Unspecified);
         if my_desired_state == DesiredHaState::Active {
             info!("Rejecting SwitchoverRequest from peer: local desired state is also Active");
-            self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::RST, false)?;
+            self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::Rst, false)?;
             return Ok(HaEvent::None);
         }
 
@@ -706,7 +706,7 @@ impl NpuHaScopeActor {
             "Accepting SwitchoverRequest from peer with switchover_id={}",
             request.switchover_id
         );
-        self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::FIN, false)?;
+        self.send_switchover_request_to_peer(state, &request.switchover_id, MessageMetaFlags::Fin, false)?;
         self.set_npu_switchover_state(state, &request.switchover_id, "in_progress")?;
 
         Ok(HaEvent::SwitchoverRequested)
@@ -818,7 +818,7 @@ impl NpuHaScopeActor {
                     .get_npu_ha_scope_state(state.internal())
                     .and_then(|s| s.switchover_id)
                     .unwrap_or_default();
-                self.send_switchover_request_to_peer(state, &switchover_id, MessageMetaFlags::SYN, false)?;
+                self.send_switchover_request_to_peer(state, &switchover_id, MessageMetaFlags::Syn, false)?;
                 self.set_npu_switchover_state(state, &switchover_id, "in_progress")?;
             }
             HaState::SwitchingToStandby => {
@@ -1249,7 +1249,7 @@ impl NpuHaScopeActor {
             return Ok(());
         };
 
-        let msg = SwitchoverRequest::new_actor_msg(&self.base.id, &peer_actor_id, &switchover_id, flag)?;
+        let msg = SwitchoverRequest::new_actor_msg(&self.base.id, &peer_actor_id, switchover_id, flag)?;
 
         if delay {
             outgoing.send_with_delay(

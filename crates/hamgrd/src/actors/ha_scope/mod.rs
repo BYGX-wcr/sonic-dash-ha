@@ -1125,7 +1125,7 @@ mod test {
 
             // ============================================================
             // Phase 3: Upstream approves the switchover → Standby transitions
-            // to SwitchingToActive and sends SwitchoverRequest(SYN) to peer
+            // to SwitchingToActive and sends SwitchoverRequest(Syn) to peer
             // ============================================================
             #[rustfmt::skip]
             let commands = [
@@ -1152,8 +1152,8 @@ mod test {
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
                     },
-                // Expect SwitchoverRequest(SYN) sent to the peer
-                recv! { key: SwitchoverRequest::msg_key(&scope_id), data: { "dst_actor_id": &peer_scope_id, "flag": "SYN" }, addr: runtime.sp(HaScopeActor::name(), &peer_scope_id), exclude: "switchover_id" },
+                // Expect SwitchoverRequest(Syn) sent to the peer
+                recv! { key: SwitchoverRequest::msg_key(&scope_id), data: { "dst_actor_id": &peer_scope_id, "flag": "Syn" }, addr: runtime.sp(HaScopeActor::name(), &peer_scope_id), exclude: "switchover_id" },
                 // Expect HaScopeActorState: standby -> switching_to_active
                 recv! { key: HaScopeActorState::msg_key(&scope_id), data: { "owner": HaOwner::Switch as i32, "new_state": HaState::SwitchingToActive.as_str_name(), "term": "1", "vdpu_id": &vdpu0_id, "peer_vdpu_id": &vdpu1_id }, addr: runtime.sp(HaScopeActor::name(), &peer_scope_id), exclude: "timestamp" },
                 recv! { key: HaScopeActorState::msg_key(&scope_id), data: { "owner": HaOwner::Switch as i32, "new_state": HaState::SwitchingToActive.as_str_name(), "term": "1", "vdpu_id": &vdpu0_id, "peer_vdpu_id": &vdpu1_id }, addr: runtime.sp(HaSetActor::name(), &ha_set_id), exclude: "timestamp" },
@@ -1182,8 +1182,8 @@ mod test {
             // ============================================================
             #[rustfmt::skip]
             let commands = [
-                // Mock the peer accepting the switchover (FIN response)
-                send! { key: SwitchoverRequest::msg_key(&peer_scope_id), data: { "dst_actor_id": &scope_id, "switchover_id": "", "flag": "FIN" } },
+                // Mock the peer accepting the switchover (Fin response)
+                send! { key: SwitchoverRequest::msg_key(&peer_scope_id), data: { "dst_actor_id": &scope_id, "switchover_id": "", "flag": "Fin" } },
                 // Mock peer state change to SwitchingToStandby
                 send! { key: HaScopeActorState::msg_key(&peer_scope_id), data: { "timestamp": 0, "owner": 0, "new_state": HaState::SwitchingToStandby.as_str_name(), "term": "1", "vdpu_id": "", "peer_vdpu_id": "" } },
                 // Expect DPU DASH_HA_SCOPE_TABLE update with active role and new term
