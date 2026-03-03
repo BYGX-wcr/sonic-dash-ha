@@ -805,7 +805,12 @@ impl NpuHaScopeActor {
             }
             HaState::SwitchingToActive => {
                 // Activate switching_to_active role on DPU
-                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::SwitchingToActive.as_str_name(), false, false);
+                let _ = self.update_dpu_ha_scope_table_with_params(
+                    state,
+                    HaRole::SwitchingToActive.as_str_name(),
+                    false,
+                    false,
+                );
 
                 // Per HLD Section 8.2.1 Step 3: Send SwitchoverRequest to the active peer.
                 let switchover_id = self
