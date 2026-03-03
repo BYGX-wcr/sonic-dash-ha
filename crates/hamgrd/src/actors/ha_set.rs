@@ -681,7 +681,7 @@ impl HaSetActor {
             return Ok(());
         };
         self.update_dash_ha_set_table(&vdpus, incoming, outgoing)?;
-        return Ok(());
+        Ok(())
     }
 
     async fn handle_ha_scope_state_update(
