@@ -46,7 +46,7 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    if let Err(e) = log::init("hamgrd", true) {
+    if let Err(e) = log::init("hamgrd", true, None) {
         eprintln!("Failed to initialize logging: {e}");
     }
 
