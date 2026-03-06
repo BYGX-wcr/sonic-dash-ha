@@ -1,5 +1,5 @@
 use clap::Parser;
-use sonic_common::log;
+use sonic_common::log::{self, FileLogConfig};
 use swbus_config::{swbus_config_from_db, swbus_config_from_yaml};
 use swbus_core::mux::service::SwbusServiceHost;
 use tracing::info;
@@ -20,7 +20,16 @@ struct Args {
 async fn main() {
     let args = Args::parse();
 
-    if let Err(e) = log::init("swbusd", true) {
+    if let Err(e) = log::init(
+        "swbusd",
+        true,
+        Some(FileLogConfig {
+            log_file_path: "/var/log/dash-ha/swbusd.rec".to_string(),
+            max_file_size_bytes: 1 << 26,
+            max_file_count: usize::MAX,
+            targets: vec!["swbus_actor::driver".to_string()],
+        }),
+    ) {
         eprintln!("Failed to initialize logging: {e}");
     }
     info!("Starting swbusd");
