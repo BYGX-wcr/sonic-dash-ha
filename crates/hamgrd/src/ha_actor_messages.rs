@@ -506,3 +506,69 @@ impl SelfNotification {
         key.starts_with(Self::msg_key_prefix())
     }
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct ShutdownRequest {
+    // reason for shutdown
+    pub reason: String,
+}
+
+impl ShutdownRequest {
+    pub fn new_actor_msg(my_id: &str, reason: &str) -> Result<ActorMessage> {
+        ActorMessage::new(
+            Self::msg_key(my_id),
+            &Self {
+                reason: reason.to_string(),
+            },
+        )
+    }
+
+    pub fn to_actor_msg(&self, my_id: &str) -> Result<ActorMessage> {
+        ActorMessage::new(Self::msg_key(my_id), self)
+    }
+
+    pub fn msg_key_prefix() -> &'static str {
+        "ShutdownRequest|"
+    }
+
+    pub fn msg_key(my_id: &str) -> String {
+        format!("{}{}", Self::msg_key_prefix(), my_id)
+    }
+
+    pub fn is_my_msg(key: &str) -> bool {
+        key.starts_with(Self::msg_key_prefix())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ShutdownReply {
+    // reason for shutdown
+    pub response: String,
+}
+
+impl ShutdownReply {
+    pub fn new_actor_msg(my_id: &str, response: &str) -> Result<ActorMessage> {
+        ActorMessage::new(
+            Self::msg_key(my_id),
+            &Self {
+                response: response.to_string(),
+            },
+        )
+    }
+
+    pub fn to_actor_msg(&self, my_id: &str) -> Result<ActorMessage> {
+        ActorMessage::new(Self::msg_key(my_id), self)
+    }
+
+    pub fn msg_key_prefix() -> &'static str {
+        "ShutdownReply|"
+    }
+
+    pub fn msg_key(my_id: &str) -> String {
+        format!("{}{}", Self::msg_key_prefix(), my_id)
+    }
+
+    pub fn is_my_msg(key: &str) -> bool {
+        key.starts_with(Self::msg_key_prefix())
+    }
+}

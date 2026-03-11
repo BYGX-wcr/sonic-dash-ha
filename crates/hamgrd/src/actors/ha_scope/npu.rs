@@ -134,6 +134,24 @@ impl NpuHaScopeActor {
                     error!("Invalid HA Scope Heartbeat!")
                 }
             }
+        } else if ShutdownRequest::is_my_msg(key) {
+            match self.handle_shutdown_request(state, key) {
+                Ok(incoming_event) => {
+                    event = Some(incoming_event);
+                }
+                Err(_e) => {
+                    error!("Invalid Shutdown Request!")
+                }
+            }
+        } else if ShutdownReply::is_my_msg(key) {
+            match self.handle_shutdown_reply(state, key) {
+                Ok(incoming_event) => {
+                    event = Some(incoming_event);
+                }
+                Err(_e) => {
+                    error!("Invalid Shutdown Reply!")
+                }
+            }
         } else if SelfNotification::is_my_msg(key) {
             match self.handle_self_notification(state, key) {
                 Ok(incoming_event) => {
@@ -385,14 +403,7 @@ impl NpuHaScopeActor {
                 // Send a heartbeat message to the peer ha scope actor as a request to connect
                 self.send_heartbeat_to_peer(state)?;
                 // Send a signal to itself to schedule a check later
-                let outgoing = state.outgoing();
-                if let Ok(msg) = SelfNotification::new_actor_msg(&self.base.id, "CheckPeerConnection") {
-                    outgoing.send_with_delay(
-                        outgoing.from_my_sp(HaScopeActor::name(), &self.base.id),
-                        msg,
-                        Duration::from_secs(RETRY_INTERVAL.into()),
-                    );
-                }
+                self.send_self_notification(state, "CheckPeerConnection", RETRY_INTERVAL)?;
             }
         }
 
@@ -539,6 +550,76 @@ impl NpuHaScopeActor {
         }
     }
 
+    /// Handle shutdown request messages for this HA scope.
+    /// Accepts the request if the current state is Active, rejects otherwise.
+    fn handle_shutdown_request(&mut self, state: &mut State, key: &str) -> Result<HaEvent> {
+        let source_actor_id = key.strip_prefix(ShutdownRequest::msg_key_prefix()).unwrap_or(key);
+        let (internal, incoming, outgoing) = state.get_all();
+        let request: Option<ShutdownRequest> = self.base.decode_hascope_actor_message(incoming, key);
+        let Some(_request) = request else {
+            return Err(anyhow!("Failed to decode ShutdownRequest message"));
+        };
+
+        let my_state = self.current_npu_ha_state(internal);
+        let response = if my_state == HaState::Active {
+            "accepted"
+        } else {
+            "rejected"
+        };
+        if let Ok(msg) = ShutdownReply::new_actor_msg(&self.base.id, response) {
+            outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), source_actor_id), msg);
+        }
+
+        if response == "accepted" {
+            Ok(HaEvent::PeerShutdownRequested)
+        } else {
+            Ok(HaEvent::None)
+        }
+    }
+
+    /// Handle shutdown reply messages for this HA scope.
+    /// Emits HaEvent::Shutdown on "accepted". On "rejected", retries with a delay if desired state is still Dead.
+    fn handle_shutdown_reply(&mut self, state: &mut State, key: &str) -> Result<HaEvent> {
+        let (_internal, incoming, outgoing) = state.get_all();
+        let reply: Option<ShutdownReply> = self.base.decode_hascope_actor_message(incoming, key);
+        let Some(reply) = reply else {
+            return Err(anyhow!("Failed to decode ShutdownReply message"));
+        };
+
+        match reply.response.as_str() {
+            "accepted" => Ok(HaEvent::Shutdown),
+            "rejected" => {
+                let desired_state = self
+                    .base
+                    .dash_ha_scope_config
+                    .as_ref()
+                    .and_then(|c| DesiredHaState::try_from(c.desired_ha_state).ok())
+                    .unwrap_or(DesiredHaState::Unspecified);
+
+                if desired_state == DesiredHaState::Dead {
+                    let Some(peer_actor_id) = self.base.get_peer_actor_id() else {
+                        info!("Haven't received peer vDPU info yet, cannot retry shutdown");
+                        return Ok(HaEvent::None);
+                    };
+
+                    let msg = ShutdownRequest::new_actor_msg(&self.base.id, "planned shutdown")?;
+                    outgoing.send_with_delay(
+                        outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id),
+                        msg,
+                        Duration::from_secs(RETRY_INTERVAL.into()),
+                    );
+                    info!("Shutdown rejected, retrying with delay");
+                }
+
+                Ok(HaEvent::None)
+            }
+            other => {
+                error!("Unexpected shutdown reply response: {}", other);
+                Ok(HaEvent::None)
+            }
+        }
+    }
+
     /// Handle vote request messages for this HA scope
     /// Following procedure documented in <https://github.com/sonic-net/SONiC/blob/master/doc/smart-switch/high-availability/smart-switch-ha-hld.md#73-primary-election>
     fn handle_vote_request(&mut self, state: &mut State, key: &str) {
@@ -631,7 +712,7 @@ impl NpuHaScopeActor {
                 self.target_ha_scope_state = Some(TargetState::Standalone);
             }
             "RetryLater" => {
-                // TODO: retry logic
+                self.send_vote_request_to_peer(state, true)?;
             }
             _ => {
                 return Ok(HaEvent::None);
@@ -755,12 +836,13 @@ impl NpuHaScopeActor {
         state: &mut State,
         current_state: &HaState,
         pending_state: &HaState,
+        event: &HaEvent,
     ) -> Result<()> {
         let _internal = state.internal();
         match pending_state {
             HaState::Connected => {
                 // Send VoteRequest to the peer to start primary election
-                self.send_vote_request_to_peer(state)?;
+                self.send_vote_request_to_peer(state, false)?;
             }
             HaState::PendingActiveActivation | HaState::PendingStandbyActivation => {
                 let operations: Vec<(String, String)> = vec![(Uuid::new_v4().to_string(), "activate_role".to_string())];
@@ -768,7 +850,27 @@ impl NpuHaScopeActor {
                     .update_npu_ha_scope_state_pending_operations(state, operations, Vec::new())?;
             }
             HaState::Standalone => {
-                // TODO: Enter the being-standalone process
+                // Activate Standalone role on DPU with a new term
+                let _ = self.increment_npu_ha_scope_state_target_term(state);
+                let _ =
+                    self.update_dpu_ha_scope_table_with_params(state, HaRole::Standalone.as_str_name(), false, false);
+            }
+            HaState::SwitchingToStandalone => {
+                // Perform checks and corresponding steps to enter the standalone setup
+                if self.base.dash_ha_scope_config.as_ref().unwrap().desired_ha_state
+                    == DesiredHaState::Standalone as i32
+                {
+                    // Pinning to Standalone
+                    self.send_self_notification(state, "EnterStandalone", 0)?;
+                } else if *event == HaEvent::PeerLost {
+                    // Peer DPU lost
+                    self.send_self_notification(state, "EnterStandalone", 0)?;
+                } else if *event == HaEvent::PeerShutdownRequested {
+                    // Peer DPU planned shutdown
+                    self.send_self_notification(state, "EnterStandalone", 0)?;
+                } else {
+                    // TODO: send DPURequestEnterStandalone to peer
+                }
             }
             HaState::Active => {
                 if *current_state == HaState::Standalone {
@@ -860,6 +962,45 @@ impl NpuHaScopeActor {
                     self.set_npu_local_ha_state(state, HaState::Dead, "admin disabled")?;
                     // Update DPU APPL_DB to activate Dead role on the DPU
                     let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Dead.as_str_name(), false, false);
+
+                    // Send HaScopeActorState update to peer and ha-set
+                    let (internal, _incoming, outgoing) = state.get_all();
+                    let npu_state = self.base.get_npu_ha_scope_state(internal);
+                    let local_target_term = npu_state.as_ref().and_then(|s| s.local_target_term.as_deref());
+                    let owner = self
+                        .base
+                        .dash_ha_scope_config
+                        .as_ref()
+                        .map(|c| c.owner)
+                        .unwrap_or(HaOwner::Unspecified as i32);
+                    let new_state = HaState::Dead.as_str_name();
+                    let timestamp = now_in_millis();
+                    let term = local_target_term.unwrap_or("0");
+                    let ha_set_id = self.base.get_haset_id().unwrap_or_default();
+                    if let Some(peer_actor_id) = self.base.get_peer_actor_id() {
+                        if let Ok(msg) = HaScopeActorState::new_actor_msg(
+                            &self.base.id,
+                            owner,
+                            new_state,
+                            timestamp,
+                            term,
+                            &self.base.vdpu_id,
+                            self.base.peer_vdpu_id.as_deref().unwrap_or(""),
+                        ) {
+                            outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
+                        }
+                    }
+                    if let Ok(msg) = HaScopeActorState::new_actor_msg(
+                        &self.base.id,
+                        owner,
+                        new_state,
+                        timestamp,
+                        term,
+                        &self.base.vdpu_id,
+                        self.base.peer_vdpu_id.as_deref().unwrap_or(""),
+                    ) {
+                        outgoing.send(outgoing.from_my_sp(HaSetActor::name(), &ha_set_id), msg);
+                    }
                 }
                 return Ok(());
             } else {
@@ -874,7 +1015,7 @@ impl NpuHaScopeActor {
             Some((next_state, reason)) if next_state != current_state => {
                 debug!("Pending next state: {}, reason: {}", next_state.as_str_name(), reason);
                 let pending_state = next_state;
-                self.apply_pending_state_side_effects(state, &current_state, &pending_state)?;
+                self.apply_pending_state_side_effects(state, &current_state, &pending_state, &event_to_use)?;
                 self.set_npu_local_ha_state(state, pending_state, reason)?;
 
                 // send out HaScopeActorState message to the peer and ha-set actor
@@ -937,6 +1078,16 @@ impl NpuHaScopeActor {
                     let operations: Vec<(String, String)> = vec![(switchover_id, "switchover".to_string())];
                     self.base
                         .update_npu_ha_scope_state_pending_operations(state, operations, Vec::new())?;
+                } else if event_to_use == HaEvent::DesiredStateChanged && target_state == TargetState::Dead {
+                    let outgoing = state.outgoing();
+                    let Some(peer_actor_id) = self.base.get_peer_actor_id() else {
+                        // Haven't received the remote peer vDPU info yet
+                        info!("Haven't received peer vDPU info yet");
+                        return Ok(());
+                    };
+
+                    let msg = ShutdownRequest::new_actor_msg(&self.base.id, "planned shutdown")?;
+                    outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
                 }
             }
         }
@@ -951,14 +1102,13 @@ impl NpuHaScopeActor {
         current_state: &HaState,
         event: &HaEvent,
     ) -> Option<(HaState, &'static str)> {
-        if *target_state == TargetState::Dead {
+        if *event == HaEvent::Shutdown {
             return match current_state {
                 HaState::Dead => None,
                 HaState::Destroying => {
                     if self.base.dpu_ha_scope_state.as_ref().map(|s| s.ha_role.as_str())
                         == Some(HaRole::Dead.as_str_name())
                     {
-                        // HaEvent::DpuStateChanged should trigger this branch
                         // When the DPU is in dead role, all traffic is drained
                         Some((HaState::Dead, "destroy completed"))
                     } else {
@@ -984,7 +1134,7 @@ impl NpuHaScopeActor {
                 if *event == HaEvent::PeerConnected {
                     Some((HaState::Connected, "connection with peer established"))
                 } else if *event == HaEvent::PeerLost {
-                    Some((HaState::Standalone, "remote peer failure while connecting"))
+                    Some((HaState::SwitchingToStandalone, "remote peer failure while connecting"))
                 } else {
                     None
                 }
@@ -995,7 +1145,7 @@ impl NpuHaScopeActor {
                     match target_state {
                         TargetState::Active => Some((HaState::InitializingToActive, "target active role")),
                         TargetState::Standby => Some((HaState::InitializingToStandby, "target standby role")),
-                        TargetState::Standalone => Some((HaState::Standalone, "target standalone role")),
+                        TargetState::Standalone => Some((HaState::SwitchingToStandalone, "target standalone role")),
                         _ => None, // Target Dead case should be handled at the beginning of the function
                     }
                 } else {
@@ -1011,7 +1161,10 @@ impl NpuHaScopeActor {
                 {
                     Some((HaState::PendingActiveActivation, "peer is ready"))
                 } else if *event == HaEvent::PeerLost {
-                    Some((HaState::Standalone, "remote peer failure during initialization"))
+                    Some((
+                        HaState::SwitchingToStandalone,
+                        "remote peer failure during initialization",
+                    ))
                 } else if *event == HaEvent::LocalFailure {
                     Some((HaState::Standby, "local failure while init active"))
                 } else {
@@ -1032,16 +1185,18 @@ impl NpuHaScopeActor {
                 if *event == HaEvent::SwitchoverRequested {
                     Some((HaState::SwitchingToStandby, "peer requested switchover"))
                 } else if *event == HaEvent::PeerLost {
-                    Some((HaState::Standalone, "peer failure while active"))
+                    Some((HaState::SwitchingToStandalone, "peer failure while active"))
                 } else if *event == HaEvent::LocalFailure {
-                    Some((HaState::Standby, "local failure while active"))
+                    Some((HaState::SwitchingToStandalone, "local failure while active"))
+                } else if *event == HaEvent::PeerShutdownRequested {
+                    Some((HaState::SwitchingToStandalone, "peer requested shutdown"))
                 } else {
                     None
                 }
             }
             HaState::SwitchingToStandby => {
                 if *event == HaEvent::PeerLost {
-                    Some((HaState::Standalone, "peer lost during switchover to standby"))
+                    Some((HaState::SwitchingToStandalone, "peer lost during switchover to standby"))
                 } else if *event == HaEvent::PeerStateChanged
                     && self.current_npu_peer_ha_state(state.internal()) == HaState::Active
                 {
@@ -1061,14 +1216,14 @@ impl NpuHaScopeActor {
                         "switchover approved, transitioning to active",
                     ))
                 } else if *event == HaEvent::PeerLost {
-                    Some((HaState::Standalone, "peer failure while standby"))
+                    Some((HaState::SwitchingToStandalone, "peer failure while standby"))
                 } else {
                     None
                 }
             }
             HaState::SwitchingToActive => {
                 if *event == HaEvent::PeerLost {
-                    Some((HaState::Standalone, "peer lost during switchover to active"))
+                    Some((HaState::SwitchingToStandalone, "peer lost during switchover to active"))
                 } else if *event == HaEvent::PeerStateChanged
                     && self.current_npu_peer_ha_state(state.internal()) == HaState::SwitchingToStandby
                 {
@@ -1101,6 +1256,13 @@ impl NpuHaScopeActor {
                 // This branch needs to be updated based on actual event definitions
                 None
             }
+            HaState::SwitchingToStandalone => {
+                if *event == HaEvent::EnterStandalone {
+                    Some((HaState::Standalone, "won the standalone selection"))
+                } else {
+                    None
+                }
+            }
             HaState::Destroying => {
                 if self.base.dpu_ha_scope_state.as_ref().map(|s| s.ha_role.as_str()) == Some(HaRole::Dead.as_str_name())
                 {
@@ -1130,14 +1292,7 @@ impl NpuHaScopeActor {
                 self.send_heartbeat_to_peer(state)?;
 
                 // Send a signal to itself to schedule a check later
-                let outgoing = state.outgoing();
-                if let Ok(msg) = SelfNotification::new_actor_msg(&self.base.id, "CheckPeerConnection") {
-                    outgoing.send_with_delay(
-                        outgoing.from_my_sp(HaScopeActor::name(), &self.base.id),
-                        msg,
-                        Duration::from_secs(RETRY_INTERVAL.into()),
-                    );
-                }
+                self.send_self_notification(state, "CheckPeerConnection", RETRY_INTERVAL)?;
             } else {
                 // reset retry count
                 self.retry_count = 0;
@@ -1152,7 +1307,7 @@ impl NpuHaScopeActor {
 
     /// Send heartbeat to the peer HaScopeActor
     /// Serve as peer connect request during launch process
-    pub fn send_heartbeat_to_peer(&self, state: &mut State) -> Result<()> {
+    fn send_heartbeat_to_peer(&self, state: &mut State) -> Result<()> {
         let outgoing = state.outgoing();
         let Some(peer_actor_id) = self.base.get_peer_actor_id() else {
             // Haven't received the remote peer vDPU info yet
@@ -1168,7 +1323,7 @@ impl NpuHaScopeActor {
     /// Send a VoteRequest message to the peer HA scope actor for primary election
     /// The term and state come from NPU HA scope state table
     /// The desired state comes from dash_ha_scope_config
-    fn send_vote_request_to_peer(&self, state: &mut State) -> Result<()> {
+    fn send_vote_request_to_peer(&self, state: &mut State, delay: bool) -> Result<()> {
         let (internal, _incoming, outgoing) = state.get_all();
 
         let Some(peer_actor_id) = self.base.get_peer_actor_id() else {
@@ -1203,11 +1358,23 @@ impl NpuHaScopeActor {
 
         let msg = VoteRequest::new_actor_msg(&self.base.id, &peer_actor_id, &term, current_state, desired_state)?;
 
-        outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
-        info!(
-            "Sent VoteRequest to peer {}: term={}, state={}, desired_state={}",
-            peer_actor_id, term, current_state, desired_state
-        );
+        if delay {
+            outgoing.send_with_delay(
+                outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id),
+                msg,
+                Duration::from_secs(RETRY_INTERVAL.into()),
+            );
+            info!(
+                "Sent VoteRequest to peer {} with delay: term={}, state={}, desired_state={}",
+                peer_actor_id, term, current_state, desired_state
+            );
+        } else {
+            outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
+            info!(
+                "Sent VoteRequest to peer {}: term={}, state={}, desired_state={}",
+                peer_actor_id, term, current_state, desired_state
+            );
+        }
 
         Ok(())
     }
@@ -1269,6 +1436,18 @@ impl NpuHaScopeActor {
             );
         }
 
+        Ok(())
+    }
+
+    fn send_self_notification(&mut self, state: &mut State, message: &str, delay: u32) -> Result<()> {
+        let outgoing = state.outgoing();
+        if let Ok(msg) = SelfNotification::new_actor_msg(&self.base.id, message) {
+            outgoing.send_with_delay(
+                outgoing.from_my_sp(HaScopeActor::name(), &self.base.id),
+                msg,
+                Duration::from_secs(delay.into()),
+            );
+        }
         Ok(())
     }
 
