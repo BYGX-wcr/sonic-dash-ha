@@ -75,7 +75,8 @@ impl LoggerConfigChangeHandler for LoggerConfigHandler {
 ///   - log_level: emerg, alert, crit, error, warn, notice, info, debug
 ///   - output: stdout, stderr, syslog. Rust doesn't support dynamically changing log output. We will only support default output (syslog in linux, file in windows)
 /// * If file_log is provided, an additional file logging layer is created that writes records matching the specified
-///   module targets to a daily-rotating log file. This is independent of the main syslog/file output.
+///   module targets to a size-based, rotating log file (see FileLogConfig for size and count limits). This is independent
+///   of the main syslog/file output.
 pub fn init(program_name: &'static str, link_swsscommon_logger: bool, file_log: Option<FileLogConfig>) -> Result<()> {
     let log_level_env_var = format!("{}_LOG_LEVEL", program_name.to_uppercase());
 
