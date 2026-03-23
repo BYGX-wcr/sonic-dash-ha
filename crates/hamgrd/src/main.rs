@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Ok};
 use clap::Parser;
-use sonic_common::log;
+use sonic_common::log::{self, FileLogConfig};
 use sonic_common::SonicDbTable;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{

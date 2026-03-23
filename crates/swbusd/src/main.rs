@@ -1,5 +1,5 @@
 use clap::Parser;
-use sonic_common::log::{self, FileLogConfig};
+use sonic_common::log;
 use swbus_config::{swbus_config_from_db, swbus_config_from_yaml};
 use swbus_core::mux::service::SwbusServiceHost;
 use tracing::info;
