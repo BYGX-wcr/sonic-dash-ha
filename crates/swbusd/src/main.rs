@@ -20,16 +20,7 @@ struct Args {
 async fn main() {
     let args = Args::parse();
 
-    if let Err(e) = log::init(
-        "swbusd",
-        true,
-        Some(FileLogConfig {
-            log_file_path: "/var/log/dash-ha/swbusd.rec".to_string(),
-            max_file_size_bytes: 1 << 26,
-            max_file_count: usize::MAX,
-            targets: vec!["swbus_actor::driver".to_string()],
-        }),
-    ) {
+    if let Err(e) = log::init("swbusd", true, None) {
         eprintln!("Failed to initialize logging: {e}");
     }
     info!("Starting swbusd");

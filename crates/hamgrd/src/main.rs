@@ -46,7 +46,16 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    if let Err(e) = log::init("hamgrd", true, None) {
+    if let Err(e) = log::init(
+        "hamgrd",
+        true,
+        Some(FileLogConfig {
+            log_file_path: "/var/log/dash-ha/swbusd.rec".to_string(),
+            max_file_size_bytes: 1 << 26,
+            max_file_count: usize::MAX,
+            targets: vec!["swbus_actor::driver".to_string()],
+        }),
+    ) {
         eprintln!("Failed to initialize logging: {e}");
     }
 
