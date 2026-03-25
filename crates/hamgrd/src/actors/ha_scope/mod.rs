@@ -175,6 +175,7 @@ impl Actor for HaScopeActor {
                     HaOwner::Dpu => HaScopeActor::Dpu(DpuHaScopeActor { base }),
                     _ => HaScopeActor::Npu(NpuHaScopeActor::new(base)),
                 };
+                info!("Initialize HA Scope based on owner {}", owner.as_str_name());
 
                 // Immediately delegate the first config message to the new variant
                 match self {

@@ -362,7 +362,6 @@ impl NpuHaScopeActor {
         self.base.update_npu_ha_scope_state_base(state)?;
 
         if first_time {
-            self.set_npu_local_ha_state(state, HaState::Dead, "initialized to be dead")?;
             Ok(HaEvent::Launch)
         } else {
             match vdpu.up {
@@ -956,40 +955,29 @@ impl NpuHaScopeActor {
         let current_state = self.current_npu_ha_state(state.internal());
         let mut event_to_use = *event;
 
-        if *event == HaEvent::AdminStateChanged {
-            if config.disabled {
-                if current_state != HaState::Dead {
-                    self.set_npu_local_ha_state(state, HaState::Dead, "admin disabled")?;
-                    // Update DPU APPL_DB to activate Dead role on the DPU
-                    let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Dead.as_str_name(), false, false);
+        // always check the admin state before doing anything
+        if config.disabled {
+            if current_state != HaState::Dead {
+                info!("Ha Scope {} is disabled!", self.base.id);
+                self.set_npu_local_ha_state(state, HaState::Dead, "admin disabled")?;
+                // Update DPU APPL_DB to activate Dead role on the DPU
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Dead.as_str_name(), false, false);
 
-                    // Send HaScopeActorState update to peer and ha-set
-                    let (internal, _incoming, outgoing) = state.get_all();
-                    let npu_state = self.base.get_npu_ha_scope_state(internal);
-                    let local_target_term = npu_state.as_ref().and_then(|s| s.local_target_term.as_deref());
-                    let owner = self
-                        .base
-                        .dash_ha_scope_config
-                        .as_ref()
-                        .map(|c| c.owner)
-                        .unwrap_or(HaOwner::Unspecified as i32);
-                    let new_state = HaState::Dead.as_str_name();
-                    let timestamp = now_in_millis();
-                    let term = local_target_term.unwrap_or("0");
-                    let ha_set_id = self.base.get_haset_id().unwrap_or_default();
-                    if let Some(peer_actor_id) = self.base.get_peer_actor_id() {
-                        if let Ok(msg) = HaScopeActorState::new_actor_msg(
-                            &self.base.id,
-                            owner,
-                            new_state,
-                            timestamp,
-                            term,
-                            &self.base.vdpu_id,
-                            self.base.peer_vdpu_id.as_deref().unwrap_or(""),
-                        ) {
-                            outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
-                        }
-                    }
+                // Send HaScopeActorState update to peer and ha-set
+                let (internal, _incoming, outgoing) = state.get_all();
+                let npu_state = self.base.get_npu_ha_scope_state(internal);
+                let local_target_term = npu_state.as_ref().and_then(|s| s.local_target_term.as_deref());
+                let owner = self
+                    .base
+                    .dash_ha_scope_config
+                    .as_ref()
+                    .map(|c| c.owner)
+                    .unwrap_or(HaOwner::Unspecified as i32);
+                let new_state = HaState::Dead.as_str_name();
+                let timestamp = now_in_millis();
+                let term = local_target_term.unwrap_or("0");
+                let ha_set_id = self.base.get_haset_id().unwrap_or_default();
+                if let Some(peer_actor_id) = self.base.get_peer_actor_id() {
                     if let Ok(msg) = HaScopeActorState::new_actor_msg(
                         &self.base.id,
                         owner,
@@ -999,14 +987,25 @@ impl NpuHaScopeActor {
                         &self.base.vdpu_id,
                         self.base.peer_vdpu_id.as_deref().unwrap_or(""),
                     ) {
-                        outgoing.send(outgoing.from_my_sp(HaSetActor::name(), &ha_set_id), msg);
+                        outgoing.send(outgoing.from_my_sp(HaScopeActor::name(), &peer_actor_id), msg);
                     }
                 }
-                return Ok(());
-            } else {
-                // Equivalent to launch
-                event_to_use = HaEvent::Launch;
+                if let Ok(msg) = HaScopeActorState::new_actor_msg(
+                    &self.base.id,
+                    owner,
+                    new_state,
+                    timestamp,
+                    term,
+                    &self.base.vdpu_id,
+                    self.base.peer_vdpu_id.as_deref().unwrap_or(""),
+                ) {
+                    outgoing.send(outgoing.from_my_sp(HaSetActor::name(), &ha_set_id), msg);
+                }
             }
+            return Ok(());
+        } else {
+            // Equivalent to launch
+            event_to_use = HaEvent::Launch;
         }
 
         let target_state = self.target_ha_scope_state.unwrap_or(TargetState::Unspecified);
@@ -1120,7 +1119,7 @@ impl NpuHaScopeActor {
         }
 
         match current_state {
-            HaState::Dead => {
+            HaState::Unspecified | HaState::Dead => {
                 // On launch
                 if *event == HaEvent::Launch {
                     Some((HaState::Connecting, "ha scope initializing"))
