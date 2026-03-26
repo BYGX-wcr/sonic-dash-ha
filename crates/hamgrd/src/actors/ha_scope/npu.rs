@@ -14,7 +14,7 @@ use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use super::base::HaScopeBase;
-use super::{HaEvent, HaScopeActor, TargetState, MAX_RETRIES, RETRY_INTERVAL};
+use super::{HaEvent, HaScopeActor, TargetState, BULK_SYNC_TIMEOUT, MAX_RETRIES, RETRY_INTERVAL};
 
 pub struct NpuHaScopeActor {
     pub(super) base: HaScopeBase,
@@ -851,8 +851,7 @@ impl NpuHaScopeActor {
             HaState::Standalone => {
                 // Activate Standalone role on DPU with a new term
                 let _ = self.increment_npu_ha_scope_state_target_term(state);
-                let _ =
-                    self.update_dpu_ha_scope_table_with_params(state, HaRole::Standalone.as_str_name());
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standalone.as_str_name());
             }
             HaState::SwitchingToStandalone => {
                 // Perform checks and corresponding steps to enter the standalone setup
@@ -906,10 +905,7 @@ impl NpuHaScopeActor {
             }
             HaState::SwitchingToActive => {
                 // Activate switching_to_active role on DPU
-                let _ = self.update_dpu_ha_scope_table_with_params(
-                    state,
-                    HaRole::SwitchingToActive.as_str_name(),
-                );
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::SwitchingToActive.as_str_name());
 
                 // Per HLD Section 8.2.1 Step 3: Send SwitchoverRequest to the active peer.
                 let switchover_id = self
@@ -1459,12 +1455,14 @@ impl NpuHaScopeActor {
         };
 
         let bulk_sync_session = DashFlowSyncSessionTable {
+            session_type: "bulk_sync".to_string(),
             ha_set_id: ha_set_id.clone(),
             target_server_ip: haset.ha_set.peer_ip.clone(),
             target_server_port: haset
                 .ha_set
                 .cp_data_channel_port
                 .expect("cp_data_channel_port must be configured"),
+            timeout: BULK_SYNC_TIMEOUT,
         };
 
         let session_id = Uuid::new_v4().to_string();
@@ -1494,11 +1492,7 @@ impl NpuHaScopeActor {
 // NPU-specific state update methods
 impl NpuHaScopeActor {
     /// Update DPU HA Scope Table based on configurations and parameters
-    fn update_dpu_ha_scope_table_with_params(
-        &self,
-        state: &mut State,
-        ha_role: &str,
-    ) -> Result<()> {
+    fn update_dpu_ha_scope_table_with_params(&self, state: &mut State, ha_role: &str) -> Result<()> {
         let Some(dash_ha_scope_config) = self.base.dash_ha_scope_config.as_ref() else {
             return Ok(());
         };
