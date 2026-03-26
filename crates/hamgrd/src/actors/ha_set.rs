@@ -1324,7 +1324,7 @@ mod test {
                     data: { "owner": HaOwner::Switch as i32, "new_state": HaState::Active.as_str_name(), "timestamp": 12345i64, "term": "1", "vdpu_id": &vdpu0_id, "peer_vdpu_id": &vdpu1_id },
                     addr: runtime.sp("ha-scope", &scope_id) },
             // Verify VnetRouteTunnelTable with both primary and secondary
-            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.vnet_name.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
+            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.dpu_vnet.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
                       "operation": "Set", "field_values": expected_vnet_route_active},
                     addr: crate::common_bridge_sp::<VnetRouteTunnelTable>(&runtime.get_swbus_edge()) },
 
@@ -1334,7 +1334,7 @@ mod test {
                     data: { "owner": HaOwner::Switch as i32, "new_state": HaState::Standalone.as_str_name(), "timestamp": 12346i64, "term": "2", "vdpu_id": &vdpu0_id, "peer_vdpu_id": "" },
                     addr: runtime.sp("ha-scope", &scope_id) },
             // Verify VnetRouteTunnelTable with only primary DPU
-            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.vnet_name.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
+            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.dpu_vnet.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
                       "operation": "Set", "field_values": expected_vnet_route_standalone},
                     addr: crate::common_bridge_sp::<VnetRouteTunnelTable>(&runtime.get_swbus_edge()) },
 
@@ -1344,7 +1344,7 @@ mod test {
                     addr: crate::common_bridge_sp::<HaSetConfig>(&runtime.get_swbus_edge()) },
             recv! { key: &ha_set_id, data: {"key": &ha_set_id,  "operation": "Del", "field_values": {}},
                     addr: crate::common_bridge_sp::<DashHaSetTable>(&runtime.get_swbus_edge()) },
-            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.vnet_name.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
+            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.dpu_vnet.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
                        "operation": "Del", "field_values": {}},
                     addr: crate::common_bridge_sp::<VnetRouteTunnelTable>(&runtime.get_swbus_edge()) },
             // Verify BFD sessions deleted
@@ -1459,7 +1459,7 @@ mod test {
                     addr: crate::common_bridge_sp::<HaSetConfig>(&runtime.get_swbus_edge()) },
             recv! { key: &ha_set_id, data: {"key": &ha_set_id,  "operation": "Del", "field_values": {}},
                     addr: crate::common_bridge_sp::<DashHaSetTable>(&runtime.get_swbus_edge()) },
-            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.vnet_name.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
+            recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.dpu_vnet.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
                        "operation": "Del", "field_values": {}},
                     addr: crate::common_bridge_sp::<VnetRouteTunnelTable>(&runtime.get_swbus_edge()) },
             recv! { key: &ha_set_id, data: {"key": "default:default:10.0.0.0", "operation": "Del", "field_values": {}},
