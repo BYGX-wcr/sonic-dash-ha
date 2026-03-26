@@ -234,9 +234,9 @@ impl DpuHaScopeActor {
 
         let dash_ha_scope = DashHaScopeTable {
             version: dash_ha_scope_config.version.parse().unwrap(),
-            disabled: dash_ha_scope_config.disabled,
+            disabled: Some(dash_ha_scope_config.disabled),
             ha_set_id: dash_ha_scope_config.ha_set_id.clone(),
-            vip_v4: haset.ha_set.vip_v4.clone(),
+            vip_v4: Some(haset.ha_set.vip_v4.clone()),
             vip_v6: haset.ha_set.vip_v6.clone(),
             ha_role: if dash_ha_scope_config.desired_ha_state == DesiredHaState::Unspecified as i32 {
                 "standby".to_string()
@@ -248,8 +248,8 @@ impl DpuHaScopeActor {
                 .to_lowercase()
             }, /*todo, how switching_to_active is derived. Is it relevant to dpu driven mode */
             ha_term: "0".to_string(), // TODO: not clear what need to be done for DPU-driven mode
-            flow_reconcile_requested,
-            activate_role_requested,
+            flow_reconcile_requested: Some(flow_reconcile_requested),
+            activate_role_requested: Some(activate_role_requested),
         };
 
         let fv = swss_serde::to_field_values(&dash_ha_scope)?;

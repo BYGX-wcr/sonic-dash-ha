@@ -368,14 +368,14 @@ pub struct VnetRouteTunnelTable {
 )]
 pub struct DashHaScopeTable {
     pub version: u32,
-    pub disabled: bool,
+    pub disabled: Option<bool>,
     pub ha_role: String,
     pub ha_term: String,
     pub ha_set_id: String,
-    pub vip_v4: String,
+    pub vip_v4: Option<String>,
     pub vip_v6: Option<String>,
-    pub flow_reconcile_requested: bool,
-    pub activate_role_requested: bool,
+    pub flow_reconcile_requested: Option<bool>,
+    pub activate_role_requested: Option<bool>,
 }
 
 /// <https://github.com/sonic-net/SONiC/blob/master/doc/smart-switch/high-availability/smart-switch-ha-detailed-design.md#2342-ha-scope-state>

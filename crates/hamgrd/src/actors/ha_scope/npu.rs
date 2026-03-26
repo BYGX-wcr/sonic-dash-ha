@@ -852,7 +852,7 @@ impl NpuHaScopeActor {
                 // Activate Standalone role on DPU with a new term
                 let _ = self.increment_npu_ha_scope_state_target_term(state);
                 let _ =
-                    self.update_dpu_ha_scope_table_with_params(state, HaRole::Standalone.as_str_name(), false, false);
+                    self.update_dpu_ha_scope_table_with_params(state, HaRole::Standalone.as_str_name());
             }
             HaState::SwitchingToStandalone => {
                 // Perform checks and corresponding steps to enter the standalone setup
@@ -887,11 +887,11 @@ impl NpuHaScopeActor {
 
                 // Activate Active role on DPU with a new term
                 let _ = self.increment_npu_ha_scope_state_target_term(state);
-                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Active.as_str_name(), false, false);
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Active.as_str_name());
             }
             HaState::InitializingToStandby => {
                 // Activate Standby role on DPU
-                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name(), false, false);
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name());
             }
             HaState::Standby => {
                 if *current_state == HaState::SwitchingToStandby {
@@ -902,15 +902,13 @@ impl NpuHaScopeActor {
                     self.complete_switchover(state, "failed")?;
                 }
                 // The Standby role on DPU may have been activated, this operation is to update the term and also ensure the DPU is in standby role if not done previously
-                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name(), false, false);
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name());
             }
             HaState::SwitchingToActive => {
                 // Activate switching_to_active role on DPU
                 let _ = self.update_dpu_ha_scope_table_with_params(
                     state,
                     HaRole::SwitchingToActive.as_str_name(),
-                    false,
-                    false,
                 );
 
                 // Per HLD Section 8.2.1 Step 3: Send SwitchoverRequest to the active peer.
@@ -925,11 +923,11 @@ impl NpuHaScopeActor {
             HaState::SwitchingToStandby => {
                 // Per HLD Section 8.2.1 Step 4: The active node received a SwitchoverRequest
                 // and is now transitioning to standby. Activate standby role on DPU.
-                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name(), false, false);
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Standby.as_str_name());
             }
             HaState::Destroying => {
                 // Activate Dead role on the DPU
-                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Dead.as_str_name(), false, false);
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Dead.as_str_name());
             }
             _ => {}
         }
@@ -961,7 +959,7 @@ impl NpuHaScopeActor {
                 info!("Ha Scope {} is disabled!", self.base.id);
                 self.set_npu_local_ha_state(state, HaState::Dead, "admin disabled")?;
                 // Update DPU APPL_DB to activate Dead role on the DPU
-                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Dead.as_str_name(), false, false);
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::Dead.as_str_name());
 
                 // Send HaScopeActorState update to peer and ha-set
                 let (internal, _incoming, outgoing) = state.get_all();
@@ -1003,7 +1001,7 @@ impl NpuHaScopeActor {
                 }
             }
             return Ok(());
-        } else {
+        } else if event_to_use == HaEvent::AdminStateChanged {
             // Equivalent to launch
             event_to_use = HaEvent::Launch;
         }
@@ -1500,8 +1498,6 @@ impl NpuHaScopeActor {
         &self,
         state: &mut State,
         ha_role: &str,
-        flow_reconcile_requested: bool,
-        activate_role_requested: bool,
     ) -> Result<()> {
         let Some(dash_ha_scope_config) = self.base.dash_ha_scope_config.as_ref() else {
             return Ok(());
@@ -1510,7 +1506,7 @@ impl NpuHaScopeActor {
         let (internal, incoming, outgoing) = state.get_all();
 
         let ha_set_id = self.base.get_haset_id().unwrap();
-        let Some(haset) = self.base.get_haset(incoming) else {
+        let Some(_haset) = self.base.get_haset(incoming) else {
             debug!(
                 "HA-SET {} has not been received. Skip DASH_HA_SCOPE_TABLE update",
                 &ha_set_id
@@ -1520,18 +1516,18 @@ impl NpuHaScopeActor {
 
         let dash_ha_scope = DashHaScopeTable {
             version: dash_ha_scope_config.version.parse().unwrap(),
-            disabled: dash_ha_scope_config.disabled,
+            disabled: None,
             ha_set_id: dash_ha_scope_config.ha_set_id.clone(),
-            vip_v4: haset.ha_set.vip_v4.clone(),
-            vip_v6: haset.ha_set.vip_v6.clone(),
+            vip_v4: None,
+            vip_v6: None,
             ha_role: ha_role.to_owned(),
             ha_term: self
                 .base
                 .get_npu_ha_scope_state(internal)
                 .and_then(|s| s.local_target_term)
                 .unwrap_or("0".to_string()),
-            flow_reconcile_requested,
-            activate_role_requested,
+            flow_reconcile_requested: None,
+            activate_role_requested: None,
         };
 
         let fv = swss_serde::to_field_values(&dash_ha_scope)?;

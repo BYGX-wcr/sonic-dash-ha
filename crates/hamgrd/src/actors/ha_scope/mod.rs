@@ -624,12 +624,7 @@ mod test {
                             "version": "2",
                             "ha_role": HaRole::Active.as_str_name(),
                             "ha_term": "1",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -675,12 +670,7 @@ mod test {
                             "version": "3",
                             "ha_role": HaRole::Dead.as_str_name(),
                             "ha_term": "1",
-                            "disabled": "true",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -785,12 +775,7 @@ mod test {
                             "version": "1",
                             "ha_role": HaRole::Standby.as_str_name(),
                             "ha_term": "0",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -843,12 +828,7 @@ mod test {
                             "version": "2",
                             "ha_role": HaRole::Standby.as_str_name(),
                             "ha_term": "1",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -895,12 +875,7 @@ mod test {
                             "version": "3",
                             "ha_role": HaRole::Dead.as_str_name(),
                             "ha_term": "1",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1033,12 +1008,7 @@ mod test {
                             "version": "2",
                             "ha_role": HaRole::Active.as_str_name(),
                             "ha_term": "1",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1089,12 +1059,7 @@ mod test {
                             "version": "2",
                             "ha_role": HaRole::Standalone.as_str_name(),
                             "ha_term": "2",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1141,12 +1106,7 @@ mod test {
                             "version": "3",
                             "ha_role": HaRole::Dead.as_str_name(),
                             "ha_term": "2",
-                            "disabled": "true",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1239,12 +1199,7 @@ mod test {
                             "version": "1",
                             "ha_role": HaRole::Standby.as_str_name(),
                             "ha_term": "0",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1291,12 +1246,7 @@ mod test {
                             "version": "2",
                             "ha_role": HaRole::Standby.as_str_name(),
                             "ha_term": "1",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1387,12 +1337,7 @@ mod test {
                             "version": "4",
                             "ha_role": HaRole::SwitchingToActive.as_str_name(),
                             "ha_term": "1",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1439,12 +1384,7 @@ mod test {
                             "version": "4",
                             "ha_role": HaRole::Active.as_str_name(),
                             "ha_term": "2",
-                            "disabled": "false",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
@@ -1502,12 +1442,7 @@ mod test {
                             "version": "5",
                             "ha_role": HaRole::Dead.as_str_name(),
                             "ha_term": "2",
-                            "disabled": "true",
-                            "ha_set_id": &ha_set_id,
-                            "vip_v4": ha_set_obj.vip_v4.clone(),
-                            "vip_v6": ha_set_obj.vip_v6.clone(),
-                            "activate_role_requested": "false",
-                            "flow_reconcile_requested": "false"
+                            "ha_set_id": &ha_set_id
                         },
                         },
                         addr: crate::common_bridge_sp::<DashHaScopeTable>(&runtime.get_swbus_edge())
