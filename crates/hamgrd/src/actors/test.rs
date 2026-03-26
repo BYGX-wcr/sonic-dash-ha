@@ -394,7 +394,8 @@ pub fn make_dash_ha_global_config() -> DashHaGlobalConfig {
         dp_channel_src_port_max: Some(45678),
         dp_channel_probe_fail_threshold: Some(3),
         dp_channel_probe_interval_ms: Some(1000),
-        vnet_name: Some("vnet0".to_string()),
+        dpu_vnet: Some("vnet0".to_string()),
+        dpu_vlan: Some("Vlan55".to_string()),
     }
 }
 
@@ -519,7 +520,7 @@ pub fn string_to_ip(s: String) -> Option<IpAddress> {
     }
     if let Ok(v4) = s.parse::<std::net::Ipv4Addr>() {
         Some(IpAddress {
-            ip: Some(Ip::Ipv4(u32::from(v4))),
+            ip: Some(Ip::Ipv4(u32::from(v4).to_be())),
         })
     } else if let Ok(v6) = s.parse::<std::net::Ipv6Addr>() {
         Some(IpAddress {
