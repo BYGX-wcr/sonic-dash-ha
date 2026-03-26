@@ -243,15 +243,13 @@ impl DpuActor {
                 None
             }
         };
-        let final_state = match (&dpu_state, &bfd_probe_state) {
-            (Some(dpu_state), Some(bfd_probe_state)) => {
+
+        let final_state = match &dpu_state {
+            Some(dpu_state) => {
                 let pmon_dpu_up = dpu_state.dpu_midplane_link_state == DpuPmonStateType::Up
                     && dpu_state.dpu_control_plane_state == DpuPmonStateType::Up
                     && dpu_state.dpu_data_plane_state == DpuPmonStateType::Up;
-                // bfd is considered up if there is at least one v4 session up to any peer
-                let bfd_dpu_up =
-                    !bfd_probe_state.v4_bfd_up_sessions.is_empty() || !bfd_probe_state.v6_bfd_up_sessions.is_empty();
-                pmon_dpu_up && bfd_dpu_up
+                pmon_dpu_up
             }
             _ => false,
         };
