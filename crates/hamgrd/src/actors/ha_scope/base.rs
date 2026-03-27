@@ -13,6 +13,7 @@ use swbus_actor::{
     state::{incoming::Incoming, internal::Internal, outgoing::Outgoing},
     ActorMessage, State,
 };
+use swbus_edge::swbus_proto::swbus::ServicePath;
 use swss_common::{KeyOpFieldValues, KeyOperation};
 use swss_common_bridge::consumer::ConsumerBridge;
 use tracing::{debug, error, info};
@@ -22,6 +23,7 @@ pub struct HaScopeBase {
     pub(super) ha_scope_id: String,
     pub(super) vdpu_id: String,
     pub(super) peer_vdpu_id: Option<String>,
+    pub(super) peer_sp: Option<ServicePath>,
     pub(super) dash_ha_scope_config: Option<HaScopeConfig>,
     pub(super) bridges: Vec<ConsumerBridge>,
     /// We need to keep track of the previous dpu_ha_scope_state to detect state change
@@ -36,6 +38,7 @@ impl HaScopeBase {
                 vdpu_id: vdpu_id.to_string(),
                 ha_scope_id: ha_scope_id.to_string(),
                 peer_vdpu_id: None,
+                peer_sp: None,
                 dash_ha_scope_config: None,
                 bridges: Vec::new(),
                 dpu_ha_scope_state: None,
@@ -227,6 +230,55 @@ impl HaScopeBase {
             HaScopeConfig::key_separator(),
             &self.ha_scope_id
         ))
+    }
+
+    /// Construct the full ServicePath for the remote peer HA scope actor.
+    ///
+    /// This resolves the peer's node by: looking up the peer vDPU's REMOTE_DPU entry to get
+    /// the remote endpoint (npu_ipv4:swbus_port), then querying the local swbusd to resolve
+    /// that endpoint to a ServicePath.
+    pub async fn resolve_peer_sp(
+        &self,
+        edge_runtime: &std::sync::Arc<swbus_edge::SwbusEdgeRuntime>,
+    ) -> Result<ServicePath> {
+        let peer_vdpu_id = self
+            .peer_vdpu_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("peer_vdpu_id not set yet"))?;
+
+        let peer_actor_id = self
+            .get_peer_actor_id()
+            .ok_or_else(|| anyhow::anyhow!("peer actor id not available"))?;
+
+        // Step 1: Resolve vDPU ID → REMOTE_DPU entry
+        let remote_dpu = crate::db_structs::get_remote_dpu_for_vdpu(peer_vdpu_id)?;
+
+        // Step 2: Build the remote endpoint from REMOTE_DPU's npu_ipv4 and swbus_port
+        let npu_ip: std::net::IpAddr = remote_dpu
+            .npu_ipv4
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid REMOTE_DPU npu_ipv4: {e}"))?;
+        let endpoint = std::net::SocketAddr::new(npu_ip, remote_dpu.swbus_port);
+
+        // Step 3: Query swbusd to resolve the endpoint to the remote node's ServicePath
+        let remote_node_sp = edge_runtime
+            .resolve_peer_sp(endpoint)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to resolve remote peer SP for {endpoint}: {e}"))?;
+
+        // Step 4: Construct the full peer HA scope actor ServicePath
+        let mut peer_sp = remote_node_sp;
+        peer_sp.service_type = "hamgrd".to_string();
+        peer_sp.service_id = "0".to_string();
+        peer_sp.resource_type = "ha-scope".to_string();
+        peer_sp.resource_id = peer_actor_id;
+
+        Ok(peer_sp)
+    }
+
+    /// Get the cached peer ServicePath, if available.
+    pub fn get_peer_sp(&self) -> Option<&ServicePath> {
+        self.peer_sp.as_ref()
     }
 
     pub fn vdpu_is_managed(&self, incoming: &Incoming) -> bool {

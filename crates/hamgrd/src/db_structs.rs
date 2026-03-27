@@ -558,6 +558,29 @@ pub fn get_dpu_config_from_db(dpu_id: u32) -> Result<Dpu> {
     Err(anyhow::anyhow!("DPU entry not found for slot {}", dpu_id))
 }
 
+/// Look up the REMOTE_DPU entry corresponding to a peer vDPU ID.
+///
+/// Resolution chain: VDPU|{vdpu_id} → main_dpu_ids[0] → REMOTE_DPU|{dpu_key}
+pub fn get_remote_dpu_for_vdpu(vdpu_id: &str) -> Result<RemoteDpu> {
+    // Step 1: Read the VDPU entry to get the main DPU ID
+    let db = DbConnector::new_named("CONFIG_DB", false, 0).context("connecting config_db for VDPU lookup")?;
+    let vdpu_table = Table::new(db, "VDPU").context("opening VDPU table")?;
+    let vdpu: VDpu = from_table(&vdpu_table, vdpu_id).context(format!("reading VDPU entry {vdpu_id}"))?;
+
+    let dpu_key = vdpu
+        .main_dpu_ids
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("VDPU entry {vdpu_id} has empty main_dpu_ids"))?;
+
+    // Step 2: Read the REMOTE_DPU entry using the DPU key
+    let db = DbConnector::new_named("CONFIG_DB", false, 0).context("connecting config_db for REMOTE_DPU lookup")?;
+    let remote_dpu_table = Table::new(db, "REMOTE_DPU").context("opening REMOTE_DPU table")?;
+    let remote_dpu: RemoteDpu =
+        from_table(&remote_dpu_table, dpu_key).context(format!("reading REMOTE_DPU entry {dpu_key}"))?;
+
+    Ok(remote_dpu)
+}
+
 #[skip_serializing_none]
 #[serde_as]
 #[derive(Default, Debug, Deserialize, Serialize, PartialEq, SonicDb)]
