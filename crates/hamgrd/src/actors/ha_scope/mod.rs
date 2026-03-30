@@ -516,7 +516,9 @@ mod test {
         async fn ha_scope_npu_launch_to_active_then_down() {
             sonic_common::log::init_logger_for_test();
             let _redis = Redis::start_config_db();
+            test::setup_remote_dpu_in_db(1, 0);
             let runtime = test::create_actor_runtime(2, "10.0.2.0", "10:0:2::").await;
+            test::setup_mock_swbusd_resolve_peer_sp(&runtime.get_swbus_edge());
 
             let (ha_set_id, ha_set_obj) = make_dpu_scope_ha_set_obj(2, 0);
             let dpu_mon = make_dpu_pmon_state(true);
@@ -703,7 +705,9 @@ mod test {
         async fn ha_scope_npu_launch_to_standby_then_down() {
             sonic_common::log::init_logger_for_test();
             let _redis = Redis::start_config_db();
+            test::setup_remote_dpu_in_db(1, 0);
             let runtime = test::create_actor_runtime(4, "10.0.4.0", "10:0:4::").await;
+            test::setup_mock_swbusd_resolve_peer_sp(&runtime.get_swbus_edge());
 
             let (ha_set_id, ha_set_obj) = make_dpu_scope_ha_set_obj(4, 0);
             let dpu_mon = make_dpu_pmon_state(true);
@@ -917,7 +921,9 @@ mod test {
         async fn ha_scope_npu_active_to_standalone_on_peer_shutdown() {
             sonic_common::log::init_logger_for_test();
             let _redis = Redis::start_config_db();
+            test::setup_remote_dpu_in_db(1, 0);
             let runtime = test::create_actor_runtime(8, "10.0.8.0", "10:0:8::").await;
+            test::setup_mock_swbusd_resolve_peer_sp(&runtime.get_swbus_edge());
 
             let (ha_set_id, ha_set_obj) = make_dpu_scope_ha_set_obj(8, 0);
             let dpu_mon = make_dpu_pmon_state(true);
@@ -1139,7 +1145,9 @@ mod test {
         async fn ha_scope_npu_planned_switchover() {
             sonic_common::log::init_logger_for_test();
             let _redis = Redis::start_config_db();
+            test::setup_remote_dpu_in_db(1, 0);
             let runtime = test::create_actor_runtime(6, "10.0.6.0", "10:0:6::").await;
+            test::setup_mock_swbusd_resolve_peer_sp(&runtime.get_swbus_edge());
 
             let (ha_set_id, ha_set_obj) = make_dpu_scope_ha_set_obj(6, 0);
             let dpu_mon = make_dpu_pmon_state(true);

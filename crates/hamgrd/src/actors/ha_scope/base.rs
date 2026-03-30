@@ -24,6 +24,7 @@ pub struct HaScopeBase {
     pub(super) vdpu_id: String,
     pub(super) peer_vdpu_id: Option<String>,
     pub(super) peer_sp: Option<ServicePath>,
+    pub(super) ha_set_sp: Vec<ServicePath>,
     pub(super) dash_ha_scope_config: Option<HaScopeConfig>,
     pub(super) bridges: Vec<ConsumerBridge>,
     /// We need to keep track of the previous dpu_ha_scope_state to detect state change
@@ -39,6 +40,7 @@ impl HaScopeBase {
                 ha_scope_id: ha_scope_id.to_string(),
                 peer_vdpu_id: None,
                 peer_sp: None,
+                ha_set_sp: vec![],
                 dash_ha_scope_config: None,
                 bridges: Vec::new(),
                 dpu_ha_scope_state: None,
@@ -238,7 +240,7 @@ impl HaScopeBase {
     /// the remote endpoint (npu_ipv4:swbus_port), then querying the local swbusd to resolve
     /// that endpoint to a ServicePath.
     pub async fn resolve_peer_sp(
-        &self,
+        &mut self,
         edge_runtime: &std::sync::Arc<swbus_edge::SwbusEdgeRuntime>,
     ) -> Result<ServicePath> {
         let peer_vdpu_id = self
@@ -272,6 +274,16 @@ impl HaScopeBase {
         peer_sp.service_id = "0".to_string();
         peer_sp.resource_type = "ha-scope".to_string();
         peer_sp.resource_id = peer_actor_id;
+
+        // Step 5: Construct the full remmote HA set actor ServicePath
+        let mut remote_ha_set_sp = peer_sp.clone();
+        remote_ha_set_sp.resource_type = "ha-set".to_string();
+        remote_ha_set_sp.resource_id = self
+            .get_haset_id()
+            .ok_or_else(|| anyhow::anyhow!("dash_ha_scope_config not set yet"))?;
+        if !self.ha_set_sp.iter().any(|sp| sp == &remote_ha_set_sp) {
+            self.ha_set_sp.push(remote_ha_set_sp);
+        }
 
         Ok(peer_sp)
     }

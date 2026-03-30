@@ -426,6 +426,88 @@ pub fn make_remote_dpu_object(switch: u16, dpu: u32) -> RemoteDpu {
     }
 }
 
+/// Write VDPU and REMOTE_DPU entries for the remote peer into CONFIG_DB so that
+/// `get_remote_dpu_for_vdpu` can resolve the peer's endpoint in unit tests.
+///
+/// `peer_switch` / `peer_dpu` must match the values passed to `make_remote_dpu_actor_state`.
+pub fn setup_remote_dpu_in_db(peer_switch: u16, peer_dpu: u32) {
+    let remote = make_remote_dpu_object(peer_switch, peer_dpu);
+    let dpu_key = format!("switch{peer_switch}_dpu{peer_dpu}");
+
+    // vdpu_id follows the same formula as make_vdpu_actor_state / make_dpu_object
+    let vdpu_id = format!("vdpu{}-{}", peer_switch, peer_dpu);
+
+    // Write VDPU|{vdpu_id} → main_dpu_ids
+    let db = swss_common::DbConnector::new_named("CONFIG_DB", false, 0).unwrap();
+    let vdpu_table = Table::new(db, "VDPU").unwrap();
+    let vdpu_fvs = vec![("main_dpu_ids".to_string(), dpu_key.clone())];
+    vdpu_table.set(&vdpu_id, vdpu_fvs).unwrap();
+
+    // Write REMOTE_DPU|{dpu_key}
+    let db = swss_common::DbConnector::new_named("CONFIG_DB", false, 0).unwrap();
+    let remote_dpu_table = Table::new(db, "REMOTE_DPU").unwrap();
+    let remote_fvs = vec![
+        ("pa_ipv4".to_string(), remote.pa_ipv4),
+        ("dpu_id".to_string(), remote.dpu_id.to_string()),
+        ("swbus_port".to_string(), remote.swbus_port.to_string()),
+        ("npu_ipv4".to_string(), remote.npu_ipv4),
+    ];
+    remote_dpu_table.set(&dpu_key, remote_fvs).unwrap();
+}
+
+/// Register a mock handler on the swbusd management SP that responds to
+/// `SwbusdResolvePeerSp` requests. In production, swbusd resolves a
+/// remote endpoint to the remote node's ServicePath.  In unit tests there
+/// is no swbusd, so this spawns a background task that listens for the
+/// management request and replies with the local node SP (all test actors
+/// share the same `unknown.unknown.unknown` node).
+pub fn setup_mock_swbusd_resolve_peer_sp(edge_runtime: &Arc<SwbusEdgeRuntime>) {
+    use swbus_edge::swbus_proto::swbus::{
+        self as swbus_msg, request_response, ManagementQueryResult, RequestResponse, SwbusMessage, SwbusMessageHeader,
+    };
+
+    let swbusd_sp = edge_runtime.get_base_sp().to_swbusd_service_path();
+    let node_sp = edge_runtime.get_base_sp().to_swbusd_service_path();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SwbusMessage>(16);
+    edge_runtime.add_handler(swbusd_sp, tx);
+
+    let edge = edge_runtime.clone();
+    tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            // Only respond to SwbusdResolvePeerSp management requests
+            let is_resolve_request = matches!(
+                &msg.body,
+                Some(swbus_msg::swbus_message::Body::ManagementRequest(req))
+                    if req.request == swbus_msg::ManagementRequestType::SwbusdResolvePeerSp as i32
+            );
+            if !is_resolve_request {
+                continue;
+            }
+
+            let header = msg.header.as_ref().unwrap();
+            let request_id = header.id;
+            let dest = header.source.clone().unwrap();
+            let src = header.destination.clone().unwrap();
+
+            let response = SwbusMessage {
+                header: Some(SwbusMessageHeader::new(src, dest, request_id + 1)),
+                body: Some(swbus_msg::swbus_message::Body::Response(RequestResponse {
+                    request_id,
+                    error_code: swbus_msg::SwbusErrorCode::Ok as i32,
+                    error_message: String::new(),
+                    response_body: Some(request_response::ResponseBody::ManagementQueryResult(
+                        ManagementQueryResult {
+                            value: node_sp.to_longest_path(),
+                        },
+                    )),
+                })),
+            };
+
+            let _ = edge.send(response).await;
+        }
+    });
+}
+
 pub fn make_dpu_pmon_state(all_up: bool) -> DpuState {
     let state = if all_up {
         DpuPmonStateType::Up

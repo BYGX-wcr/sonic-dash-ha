@@ -733,7 +733,10 @@ impl HaSetActor {
                 );
             }
 
-            info!("Received HaScopeStateUpdate with owner={} state={}, updating VNET ROUTE table.", self.ha_owner as i32, &ha_scope.new_state);
+            info!(
+                "Received HaScopeStateUpdate with owner={} state={}, updating VNET ROUTE table.",
+                self.ha_owner as i32, &ha_scope.new_state
+            );
             // update VNET ROUTE Table
             let vdpus: Vec<VDpuStateExt> = vdpus.into_iter().flatten().collect();
             if !vdpus.is_empty() {
