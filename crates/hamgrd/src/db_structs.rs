@@ -318,6 +318,7 @@ pub struct DashHaSetTable {
     is_dpu = "true"
 )]
 pub struct DashFlowSyncSessionTable {
+    #[serde(rename = "type")]
     pub session_type: String,
     pub ha_set_id: String,
     pub target_server_ip: String,
@@ -335,6 +336,7 @@ pub struct DashFlowSyncSessionTable {
     is_dpu = "true"
 )]
 pub struct DashFlowSyncSessionState {
+    #[serde(rename = "type")]
     pub session_type: String,
     pub state: String,
     pub creation_time_in_ms: i64,
@@ -560,7 +562,7 @@ pub fn get_dpu_config_from_db(dpu_id: u32) -> Result<Dpu> {
 
 /// Look up the REMOTE_DPU entry corresponding to a peer vDPU ID.
 ///
-/// Resolution chain: VDPU|{vdpu_id} → main_dpu_ids[0] → REMOTE_DPU|{dpu_key}
+/// Resolution chain: VDPU|{vdpu_id} → main_dpu_ids → REMOTE_DPU|{dpu_key}
 pub fn get_remote_dpu_for_vdpu(vdpu_id: &str) -> Result<RemoteDpu> {
     // Step 1: Read the VDPU entry to get the main DPU ID
     let db = DbConnector::new_named("CONFIG_DB", false, 0).context("connecting config_db for VDPU lookup")?;
