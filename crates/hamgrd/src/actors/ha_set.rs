@@ -33,7 +33,7 @@ impl DbBasedActor for HaSetActor {
         let actor = HaSetActor {
             id: key,
             dash_ha_set_config: None,
-            dp_channel_is_alive: false,
+            dp_channel_is_alive: true,
             ha_owner: HaOwner::Unspecified,
             bridges: Vec::new(),
             bfd_session_npu_ips: HashSet::new(),
@@ -733,6 +733,7 @@ impl HaSetActor {
                 );
             }
 
+            info!("Received HaScopeStateUpdate with owner={} state={}, updating VNET ROUTE table.", self.ha_owner as i32, &ha_scope.new_state);
             // update VNET ROUTE Table
             let vdpus: Vec<VDpuStateExt> = vdpus.into_iter().flatten().collect();
             if !vdpus.is_empty() {
