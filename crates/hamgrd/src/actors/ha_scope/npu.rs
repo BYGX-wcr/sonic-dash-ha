@@ -321,7 +321,7 @@ impl NpuHaScopeActor {
         };
 
         if !vdpu.dpu.is_managed {
-            debug!("vDPU {} is unmanaged. Put actor in dormant state", &self.base.vdpu_id);
+            info!("vDPU {} is unmanaged. Put actor in dormant state", &self.base.vdpu_id);
             return Ok(HaEvent::None);
         }
 
@@ -386,13 +386,11 @@ impl NpuHaScopeActor {
         context: &mut Context,
         key: &str,
     ) -> Result<HaEvent> {
-        // the ha_scope is not managing the target vDPU. Skip
-        if !self.base.vdpu_is_managed(state.incoming()) {
+        let Some(ha_set) = self.base.get_haset(state.incoming()) else {
+            error!("Invalid HA set state update!");
             return Ok(HaEvent::None);
-        }
-
-        // update basic info of NPU HA scope state
-        let _ = self.base.update_npu_ha_scope_state_base(state);
+        };
+        let peer_vdpu_id = self.base.get_remote_vdpu_id(&ha_set);
 
         let first_time = self.base.peer_vdpu_id.is_none();
         if first_time {
@@ -403,40 +401,34 @@ impl NpuHaScopeActor {
                     self.base.ha_set_sp.push(sp);
                 }
             }
-        }
 
-        let Some(ha_set) = self.base.get_haset(state.incoming()) else {
-            return Ok(HaEvent::None);
-        };
-        // update the peer vDPU if needed
-        let peer_vdpu_id = self.base.get_remote_vdpu_id(&ha_set);
-        if self.base.peer_vdpu_id.is_none() || self.base.peer_vdpu_id != peer_vdpu_id {
-            if self.base.peer_vdpu_id.is_some() {
-                // Got a new peer HA scope actor than the old one
-                // the behavior in this scenario is currently undefined
-                error!("Dynamically changing peer is not supported!");
-                return Ok(HaEvent::None);
-            } else {
-                // Got a fresh new peer HA scope actor
-                self.base.peer_vdpu_id = peer_vdpu_id;
+            // update the peer vDPU ID
+            self.base.peer_vdpu_id = peer_vdpu_id.clone();
 
-                // Resolve the remote peer's ServicePath via REMOTE_DPU + swbusd
-                match self.base.resolve_peer_sp(context.get_edge_runtime()).await {
-                    Ok(sp) => {
-                        info!("Resolved peer HA scope SP: {}", sp.to_longest_path());
-                        self.base.peer_sp = Some(sp);
-                    }
-                    Err(e) => {
-                        error!("Failed to resolve peer SP: {e}. Will retry on next heartbeat.");
-                    }
+            // Resolve the remote peer's ServicePath via REMOTE_DPU + swbusd
+            match self.base.resolve_peer_sp(context.get_edge_runtime()).await {
+                Ok(sp) => {
+                    info!("Resolved peer HA scope SP: {}", sp.to_longest_path());
+                    self.base.peer_sp = Some(sp);
                 }
-
-                // Send a heartbeat message to the peer ha scope actor as a request to connect
-                self.send_heartbeat_to_peer(state)?;
-                // Send a signal to itself to schedule a check later
-                self.send_self_notification(state, "CheckPeerConnection", RETRY_INTERVAL)?;
+                Err(e) => {
+                    error!("Failed to resolve peer SP: {e}. Will retry on next heartbeat.");
+                }
             }
         }
+        if self.base.peer_vdpu_id != peer_vdpu_id {
+            // Got a new peer HA scope actor than the old one
+            // the behavior in this scenario is currently undefined
+            error!("Dynamically changing peer is not supported!");
+            return Ok(HaEvent::None);
+        }
+
+        // the ha_scope is not managing the target vDPU. Skip updating NPU HA scope state
+        if !self.base.vdpu_is_managed(state.incoming()) {
+            return Ok(HaEvent::None);
+        }
+        // update basic info of NPU HA scope state
+        let _ = self.base.update_npu_ha_scope_state_base(state);
 
         if first_time {
             Ok(HaEvent::Launch)
@@ -873,6 +865,12 @@ impl NpuHaScopeActor {
     ) -> Result<()> {
         let _internal = state.internal();
         match pending_state {
+            HaState::Connecting => {
+                // Send a heartbeat message to the peer ha scope actor as a request to connect
+                self.send_heartbeat_to_peer(state)?;
+                // Send a signal to itself to schedule a check later
+                self.send_self_notification(state, "CheckPeerConnection", RETRY_INTERVAL)?;
+            }
             HaState::Connected => {
                 // Send VoteRequest to the peer to start primary election
                 self.send_vote_request_to_peer(state, false)?;
@@ -970,13 +968,19 @@ impl NpuHaScopeActor {
             info!("The HA Scope Config hasn't been initialized yet!");
             return Ok(());
         };
-        let Some(_vdpu) = self.base.get_vdpu(state.incoming()) else {
+
+        let Some(vdpu) = self.base.get_vdpu(state.incoming()) else {
             info!("vDPU {} has not been initialized yet", &self.base.vdpu_id);
             return Ok(());
         };
+        if !vdpu.dpu.is_managed {
+            info!("vDPU {} is unmanaged. Put actor in dormant state", &self.base.vdpu_id);
+            return Ok(());
+        }
+
         let ha_set_id = self.base.get_haset_id().unwrap_or_default();
         let Some(_haset) = self.base.get_haset(state.incoming()) else {
-            debug!("HA-SET {} has not been initialized yet", &ha_set_id);
+            info!("HA-SET {} has not been initialized yet", &ha_set_id);
             return Ok(());
         };
 
@@ -1004,7 +1008,7 @@ impl NpuHaScopeActor {
 
         match self.next_state(state, &target_state, &current_state, &event_to_use) {
             Some((next_state, reason)) if next_state != current_state => {
-                debug!("Pending next state: {}, reason: {}", next_state.as_str_name(), reason);
+                info!("Pending next state: {}, reason: {}", next_state.as_str_name(), reason);
                 let pending_state = next_state;
                 self.apply_pending_state_side_effects(state, &current_state, &pending_state, &event_to_use)?;
                 self.set_npu_local_ha_state(state, pending_state, reason)?;
