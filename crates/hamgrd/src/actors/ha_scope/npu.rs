@@ -735,6 +735,7 @@ impl NpuHaScopeActor {
             }
             "RetryLater" => {
                 self.send_vote_request_to_peer(state, true)?;
+                return Ok(HaEvent::None);
             }
             _ => {
                 return Ok(HaEvent::None);
@@ -1089,7 +1090,7 @@ impl NpuHaScopeActor {
             HaState::Connecting => {
                 // Go to Connected if successfully connected to the peer
                 // Go to Standalone if detecting problem on the peer and the local DPU is healthy
-                if *event == HaEvent::PeerConnected {
+                if *event == HaEvent::PeerConnected || *event == HaEvent::PeerStateChanged {
                     Some((HaState::Connected, "connection with peer established"))
                 } else if *event == HaEvent::PeerLost {
                     Some((HaState::SwitchingToStandalone, "remote peer failure while connecting"))
