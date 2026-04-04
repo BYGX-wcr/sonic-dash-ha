@@ -163,7 +163,7 @@ impl NpuHaScopeActor {
                 }
             }
         } else if SelfNotification::is_my_msg(key) {
-            match self.handle_self_notification(state, key, context) {
+            match self.handle_self_notification(state, key, context).await {
                 Ok(incoming_event) => {
                     event = Some(incoming_event);
                 }
@@ -817,7 +817,12 @@ impl NpuHaScopeActor {
     }
 
     /// Handle async self notification messages
-    fn handle_self_notification(&mut self, state: &mut State, key: &str, context: &mut Context) -> Result<HaEvent> {
+    async fn handle_self_notification(
+        &mut self,
+        state: &mut State,
+        key: &str,
+        context: &mut Context,
+    ) -> Result<HaEvent> {
         let (_internal, incoming, _outgoing) = state.get_all();
         let notification: Option<SelfNotification> = self.base.decode_hascope_actor_message(incoming, key);
         let Some(notification) = notification else {
@@ -825,10 +830,7 @@ impl NpuHaScopeActor {
         };
 
         if notification.event == "CheckPeerConnection" {
-            let result = tokio::runtime::Runtime::new()
-                .expect("Failed to create runtime")
-                .block_on(self.check_peer_connection_and_retry(state, context));
-            return result;
+            return self.check_peer_connection_and_retry(state, context).await;
         }
 
         if let Some(event) = HaEvent::from_str(&notification.event) {
@@ -875,6 +877,13 @@ impl NpuHaScopeActor {
             HaState::Connected => {
                 // Send VoteRequest to the peer to start primary election
                 self.send_vote_request_to_peer(state, false)?;
+            }
+            HaState::InitializingToActive => {
+                // If the peer is already in InitializingToStandby
+                if self.current_npu_peer_ha_state(state.internal()) == HaState::InitializingToStandby {
+                    // Note: it does not really move the HA scope into Active immediately since we need SDN approvals
+                    self.send_self_notification(state, "EnterActive", 0)?;
+                }
             }
             HaState::PendingActiveActivation | HaState::PendingStandbyActivation => {
                 let operations: Vec<(String, String)> = vec![(Uuid::new_v4().to_string(), "activate_role".to_string())];
@@ -1115,9 +1124,7 @@ impl NpuHaScopeActor {
                 // On Peer moving to InitializingToStandby, go to PendingActiveRoleActivation
                 // Go to Standalone if detecting problem on the peer and the local DPU is healthy
                 // Go to Standby if detecting problem locally
-                if *event == HaEvent::PeerStateChanged
-                    && self.current_npu_peer_ha_state(state.internal()) == HaState::InitializingToStandby
-                {
+                if self.current_npu_peer_ha_state(state.internal()) == HaState::InitializingToStandby {
                     Some((HaState::PendingActiveActivation, "peer is ready"))
                 } else if *event == HaEvent::PeerLost {
                     Some((
