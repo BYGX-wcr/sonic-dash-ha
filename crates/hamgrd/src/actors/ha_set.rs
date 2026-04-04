@@ -733,16 +733,23 @@ impl HaSetActor {
                 );
             }
 
-            info!(
-                "Received HaScopeStateUpdate with owner={} state={}, updating VNET ROUTE table.",
-                self.ha_owner as i32, &ha_scope.new_state
-            );
-            // update VNET ROUTE Table
-            let vdpus: Vec<VDpuStateExt> = vdpus.into_iter().flatten().collect();
-            if !vdpus.is_empty() {
-                self.update_vnet_route_tunnel_table(&vdpus, incoming, outgoing).await?;
+            if vdpus.len() > 0 {
+                info!(
+                    "Received HaScopeStateUpdate with owner={} state={}, updating VNET ROUTE table.",
+                    self.ha_owner as i32, &ha_scope.new_state
+                );
+                // update VNET ROUTE Table
+                let vdpus: Vec<VDpuStateExt> = vdpus.into_iter().flatten().collect();
+                if !vdpus.is_empty() {
+                    self.update_vnet_route_tunnel_table(&vdpus, incoming, outgoing).await?;
+                }
             }
         }
+
+        let Some(vdpus) = self.get_vdpus_if_ready(incoming) else {
+            return Ok(());
+        };
+        self.update_dash_ha_set_table(&vdpus, incoming, outgoing)?;
 
         Ok(())
     }
@@ -861,7 +868,8 @@ mod test {
         let vdpu0_state = serde_json::to_value(&vdpu0_state_obj).unwrap();
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
-        let (_, ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        ha_set_obj.owner = Some(HaOwner::Dpu.as_str_name().to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         let bfd = BfdSessionTable {
@@ -1022,7 +1030,8 @@ mod test {
         let vdpu0_state = serde_json::to_value(&vdpu0_state_obj).unwrap();
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
-        let (_, ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        ha_set_obj.owner = Some(HaOwner::Dpu.as_str_name().to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         // Initial BFD sessions (local_addr from managed dpu0: 18.0.0.0)
@@ -1083,7 +1092,7 @@ mod test {
             version: "1".to_string(),
             vip_v4: ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap()),
             vip_v6: Some(ip_to_string(ha_set_cfg.vip_v6.as_ref().unwrap())),
-            owner: None,
+            owner: Some(HaOwner::Dpu.as_str_name().to_string()),
             scope: Some("dpu".to_string()),
             local_npu_ip: vdpu0_state_obj.dpu.npu_ipv4.clone(),
             local_ip: vdpu0_state_obj.dpu.pa_ipv4.clone(),
@@ -1231,7 +1240,8 @@ mod test {
         let vdpu0_state = serde_json::to_value(&vdpu0_state_obj).unwrap();
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
-        let (_, ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        ha_set_obj.owner = Some(HaOwner::Switch.as_str_name().to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         let bfd = BfdSessionTable {
@@ -1331,6 +1341,11 @@ mod test {
             recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.dpu_vnet.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
                       "operation": "Set", "field_values": expected_vnet_route_active},
                     addr: crate::common_bridge_sp::<VnetRouteTunnelTable>(&runtime.get_swbus_edge()) },
+            // Verify DashHaSetTable updated after ha_scope state update
+            recv! { key: &ha_set_id, data: {"key": &ha_set_id,  "operation": "Set", "field_values": ha_set_obj_fvs},
+                    addr: crate::common_bridge_sp::<DashHaSetTable>(&runtime.get_swbus_edge()) },
+            recv! { key: HaSetActorState::msg_key(&ha_set_id), data: { "up": false, "ha_set": &ha_set_obj, "vdpu_ids": vec![vdpu0_id.clone(), vdpu1_id.clone()] },
+                    addr: runtime.sp("ha-scope", &scope_id) },
 
             // === Phase 3: ha_scope Standalone — triggers VnetRoute with only primary ===
 
@@ -1341,6 +1356,11 @@ mod test {
             recv! { key: &ha_set_id, data: {"key": format!("{}:{}", global_cfg.dpu_vnet.as_ref().unwrap(), ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap())),
                       "operation": "Set", "field_values": expected_vnet_route_standalone},
                     addr: crate::common_bridge_sp::<VnetRouteTunnelTable>(&runtime.get_swbus_edge()) },
+            // Verify DashHaSetTable updated after ha_scope state update
+            recv! { key: &ha_set_id, data: {"key": &ha_set_id,  "operation": "Set", "field_values": ha_set_obj_fvs},
+                    addr: crate::common_bridge_sp::<DashHaSetTable>(&runtime.get_swbus_edge()) },
+            recv! { key: HaSetActorState::msg_key(&ha_set_id), data: { "up": false, "ha_set": &ha_set_obj, "vdpu_ids": vec![vdpu0_id.clone(), vdpu1_id.clone()] },
+                    addr: runtime.sp("ha-scope", &scope_id) },
 
             // === Phase 4: Cleanup ===
 
@@ -1391,7 +1411,8 @@ mod test {
         let vdpu0_state = serde_json::to_value(&vdpu0_state_obj).unwrap();
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
-        let (_, ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
+        ha_set_obj.owner = Some(HaOwner::Switch.as_str_name().to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         let bfd = BfdSessionTable {
