@@ -628,7 +628,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "2",
-                            "ha_role": HaRole::Active.as_str_name(),
+                            "ha_role": "active",
                             "ha_term": "1",
                             "ha_set_id": &ha_set_id
                         },
@@ -674,7 +674,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "3",
-                            "ha_role": HaRole::Dead.as_str_name(),
+                            "ha_role": "dead",
                             "ha_term": "1",
                             "ha_set_id": &ha_set_id
                         },
@@ -781,7 +781,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "1",
-                            "ha_role": HaRole::Standby.as_str_name(),
+                            "ha_role": "standby",
                             "ha_term": "0",
                             "ha_set_id": &ha_set_id
                         },
@@ -834,7 +834,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "2",
-                            "ha_role": HaRole::Standby.as_str_name(),
+                            "ha_role": "standby",
                             "ha_term": "1",
                             "ha_set_id": &ha_set_id
                         },
@@ -881,7 +881,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "3",
-                            "ha_role": HaRole::Dead.as_str_name(),
+                            "ha_role": "dead",
                             "ha_term": "1",
                             "ha_set_id": &ha_set_id
                         },
@@ -1016,7 +1016,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "2",
-                            "ha_role": HaRole::Active.as_str_name(),
+                            "ha_role": "active",
                             "ha_term": "1",
                             "ha_set_id": &ha_set_id
                         },
@@ -1067,7 +1067,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "2",
-                            "ha_role": HaRole::Standalone.as_str_name(),
+                            "ha_role": "standalone",
                             "ha_term": "2",
                             "ha_set_id": &ha_set_id
                         },
@@ -1114,7 +1114,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "3",
-                            "ha_role": HaRole::Dead.as_str_name(),
+                            "ha_role": "dead",
                             "ha_term": "2",
                             "ha_set_id": &ha_set_id
                         },
@@ -1209,7 +1209,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "1",
-                            "ha_role": HaRole::Standby.as_str_name(),
+                            "ha_role": "standby",
                             "ha_term": "0",
                             "ha_set_id": &ha_set_id
                         },
@@ -1256,7 +1256,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "2",
-                            "ha_role": HaRole::Standby.as_str_name(),
+                            "ha_role": "standby",
                             "ha_term": "1",
                             "ha_set_id": &ha_set_id
                         },
@@ -1347,7 +1347,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "4",
-                            "ha_role": HaRole::SwitchingToActive.as_str_name(),
+                            "ha_role": "switching_to_active",
                             "ha_term": "1",
                             "ha_set_id": &ha_set_id
                         },
@@ -1394,7 +1394,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "4",
-                            "ha_role": HaRole::Active.as_str_name(),
+                            "ha_role": "active",
                             "ha_term": "2",
                             "ha_set_id": &ha_set_id
                         },
@@ -1452,7 +1452,7 @@ mod test {
                         "operation": "Set",
                         "field_values": {
                             "version": "5",
-                            "ha_role": HaRole::Dead.as_str_name(),
+                            "ha_role": "dead",
                             "ha_term": "2",
                             "ha_set_id": &ha_set_id
                         },

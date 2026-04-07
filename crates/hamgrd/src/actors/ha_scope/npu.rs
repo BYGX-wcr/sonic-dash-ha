@@ -15,6 +15,13 @@ use uuid::Uuid;
 use super::base::HaScopeBase;
 use super::{HaEvent, HaScopeActor, TargetState, BULK_SYNC_TIMEOUT, MAX_RETRIES, RETRY_INTERVAL};
 
+/// Convert an `HaRole` protobuf enum string name (e.g. `"HA_ROLE_ACTIVE"`) to its
+/// lowercase equivalent (e.g. `"active"`).  Returns the input unchanged when the
+/// `HA_ROLE_` prefix is absent.
+fn ha_role_to_string(ha_role: &str) -> String {
+    ha_role.strip_prefix("HA_ROLE_").unwrap_or(ha_role).to_lowercase()
+}
+
 pub struct NpuHaScopeActor {
     pub(super) base: HaScopeBase,
     /// Target state that HAmgrd should transition to upon HA events
@@ -1529,7 +1536,7 @@ impl NpuHaScopeActor {
             ha_set_id: dash_ha_scope_config.ha_set_id.clone(),
             vip_v4: None,
             vip_v6: None,
-            ha_role: ha_role.to_owned(),
+            ha_role: ha_role_to_string(ha_role),
             ha_term: self
                 .base
                 .get_npu_ha_scope_state(internal)

@@ -19,6 +19,13 @@ use swss_common::{KeyOpFieldValues, KeyOperation};
 use swss_common_bridge::consumer::ConsumerBridge;
 use tracing::{debug, error, info, instrument};
 
+/// Convert an `HaOwner` protobuf enum string name (e.g. `"HA_OWNER_SWITCH"`) to its
+/// lowercase equivalent (e.g. `"switch"`).  Returns the input unchanged when the
+/// `HA_OWNER_` prefix is absent.
+fn ha_owner_to_string(ha_owner: &str) -> String {
+    ha_owner.strip_prefix("HA_OWNER_").unwrap_or(ha_owner).to_lowercase()
+}
+
 pub struct HaSetActor {
     id: String,
     dash_ha_set_config: Option<HaSetConfig>,
@@ -110,7 +117,7 @@ impl HaSetActor {
             version: dash_ha_set_config.version.clone(),
             vip_v4: dash_ha_set_config.vip_v4.as_ref().map(ip_to_string).unwrap_or_default(),
             vip_v6: dash_ha_set_config.vip_v6.as_ref().map(ip_to_string),
-            owner: None,
+            owner: Some(ha_owner_to_string(self.ha_owner.as_str_name())),
             scope: sonic_dash_api_proto::types::HaScope::try_from(dash_ha_set_config.scope)
                 .map(|s| {
                     let name = s.as_str_name();
@@ -869,7 +876,7 @@ mod test {
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
         let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
-        ha_set_obj.owner = Some(HaOwner::Dpu.as_str_name().to_string());
+        ha_set_obj.owner = Some("dpu".to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         let bfd = BfdSessionTable {
@@ -1031,7 +1038,7 @@ mod test {
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
         let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
-        ha_set_obj.owner = Some(HaOwner::Dpu.as_str_name().to_string());
+        ha_set_obj.owner = Some("dpu".to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         // Initial BFD sessions (local_addr from managed dpu0: 18.0.0.0)
@@ -1092,7 +1099,7 @@ mod test {
             version: "1".to_string(),
             vip_v4: ip_to_string(ha_set_cfg.vip_v4.as_ref().unwrap()),
             vip_v6: Some(ip_to_string(ha_set_cfg.vip_v6.as_ref().unwrap())),
-            owner: Some(HaOwner::Dpu.as_str_name().to_string()),
+            owner: Some("dpu".to_string()),
             scope: Some("dpu".to_string()),
             local_npu_ip: vdpu0_state_obj.dpu.npu_ipv4.clone(),
             local_ip: vdpu0_state_obj.dpu.pa_ipv4.clone(),
@@ -1241,7 +1248,7 @@ mod test {
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
         let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
-        ha_set_obj.owner = Some(HaOwner::Switch.as_str_name().to_string());
+        ha_set_obj.owner = Some("switch".to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         let bfd = BfdSessionTable {
@@ -1412,7 +1419,7 @@ mod test {
         let vdpu1_state = serde_json::to_value(&vdpu1_state_obj).unwrap();
 
         let (_, mut ha_set_obj) = make_dpu_scope_ha_set_obj(0, 0);
-        ha_set_obj.owner = Some(HaOwner::Switch.as_str_name().to_string());
+        ha_set_obj.owner = Some("switch".to_string());
         let ha_set_obj_fvs = serde_json::to_value(swss_serde::to_field_values(&ha_set_obj).unwrap()).unwrap();
 
         let bfd = BfdSessionTable {
