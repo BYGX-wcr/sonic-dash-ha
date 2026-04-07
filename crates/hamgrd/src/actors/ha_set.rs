@@ -740,7 +740,7 @@ impl HaSetActor {
                 );
             }
 
-            if vdpus.len() > 0 {
+            if !vdpus.is_empty() {
                 info!(
                     "Received HaScopeStateUpdate with owner={} state={}, updating VNET ROUTE table.",
                     self.ha_owner as i32, &ha_scope.new_state

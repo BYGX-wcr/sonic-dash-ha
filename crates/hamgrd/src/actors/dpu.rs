@@ -255,10 +255,9 @@ impl DpuActor {
 
         let final_state = match &dpu_state {
             Some(dpu_state) => {
-                let pmon_dpu_up = dpu_state.dpu_midplane_link_state == DpuPmonStateType::Up
+                dpu_state.dpu_midplane_link_state == DpuPmonStateType::Up
                     && dpu_state.dpu_control_plane_state == DpuPmonStateType::Up
-                    && dpu_state.dpu_data_plane_state == DpuPmonStateType::Up;
-                pmon_dpu_up
+                    && dpu_state.dpu_data_plane_state == DpuPmonStateType::Up
             }
             _ => false,
         };
