@@ -82,7 +82,7 @@ impl Outgoing {
                 continue;
             }
 
-            debug!("Sending message: {msg:?}");
+            debug!(target:"hamgrd-recorder", "Sending message: {msg:?}");
             self.swbus_client
                 .send_raw(msg.swbus_message.clone())
                 .await
