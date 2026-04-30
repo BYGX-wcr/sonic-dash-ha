@@ -2529,10 +2529,10 @@ mod test {
             sonic_common::log::init_logger_for_test();
             let _redis = Redis::start_config_db();
             test::setup_remote_dpu_in_db(1, 0);
-            let runtime = test::create_actor_runtime(18, "10.0.18.0", "10:0:18::").await;
+            let runtime = test::create_actor_runtime(20, "10.0.18.0", "10:0:18::").await;
             test::setup_mock_swbusd_resolve_peer_sp(&runtime.get_swbus_edge());
 
-            let (ha_set_id, ha_set_obj) = make_dpu_scope_ha_set_obj(18, 0);
+            let (ha_set_id, ha_set_obj) = make_dpu_scope_ha_set_obj(20, 0);
             let dpu_mon = make_dpu_pmon_state(true);
             let bfd_state = make_dpu_bfd_state(Vec::new(), Vec::new());
             let dpu0 = make_local_dpu_actor_state(0, 0, true, Some(dpu_mon), Some(bfd_state));
