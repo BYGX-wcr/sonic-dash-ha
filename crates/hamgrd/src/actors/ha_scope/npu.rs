@@ -1170,8 +1170,8 @@ impl NpuHaScopeActor {
                 } else if *event == HaEvent::PeerLost {
                     // Peer DPU lost
                     self.send_self_notification(state, "EnterStandalone", 0)?;
-                } else if *event == HaEvent::PeerShutdownRequested {
-                    // Peer DPU planned shutdown
+                } else if *event == HaEvent::PeerShutdownRequested || self.current_npu_peer_ha_state(state.internal()) == HaState::Dead {
+                    // Peer DPU planned shutdown or forced shutdown
                     self.send_self_notification(state, "EnterStandalone", 0)?;
                 } else {
                     // Send DPURequestEnterStandalone to peer with local health signals
@@ -1429,6 +1429,8 @@ impl NpuHaScopeActor {
                     Some((HaState::SwitchingToStandalone, "peer requested shutdown"))
                 } else if *event == HaEvent::HighInlineSyncDrops {
                     Some((HaState::SwitchingToStandalone, "high inline-sync packet drops"))
+                } else if self.current_npu_peer_ha_state(state.internal()) == HaState::Dea {
+                    Some((HaState::SwitchingToStandalone, "peer went down"))
                 } else {
                     None
                 }
