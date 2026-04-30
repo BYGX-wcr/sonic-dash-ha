@@ -1429,7 +1429,7 @@ impl NpuHaScopeActor {
                     Some((HaState::SwitchingToStandalone, "peer requested shutdown"))
                 } else if *event == HaEvent::HighInlineSyncDrops {
                     Some((HaState::SwitchingToStandalone, "high inline-sync packet drops"))
-                } else if self.current_npu_peer_ha_state(state.internal()) == HaState::Dea {
+                } else if self.current_npu_peer_ha_state(state.internal()) == HaState::Dead {
                     Some((HaState::SwitchingToStandalone, "peer went down"))
                 } else {
                     None
