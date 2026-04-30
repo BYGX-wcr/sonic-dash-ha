@@ -1186,9 +1186,7 @@ impl NpuHaScopeActor {
 
         npu_state.local_target_asic_ha_state = new_value;
         if let Ok(fvs) = swss_serde::to_field_values(&npu_state) {
-            internal
-                .get_mut(NpuDashHaScopeState::table_name())
-                .clone_from(&fvs);
+            internal.get_mut(NpuDashHaScopeState::table_name()).clone_from(&fvs);
         }
     }
 
@@ -1231,8 +1229,7 @@ impl NpuHaScopeActor {
             HaState::PendingActiveActivation | HaState::PendingStandbyActivation => {
                 // Re-create pending operation for SDN approval
                 self.send_heartbeat_to_peer(state)?;
-                let operations: Vec<(String, String)> =
-                    vec![(Uuid::new_v4().to_string(), "activate_role".to_string())];
+                let operations: Vec<(String, String)> = vec![(Uuid::new_v4().to_string(), "activate_role".to_string())];
                 self.base
                     .update_npu_ha_scope_state_pending_operations(state, operations, Vec::new())?;
             }
@@ -1270,19 +1267,13 @@ impl NpuHaScopeActor {
             HaState::SwitchingToActive => {
                 // Re-activate switching_to_active role and re-send SwitchoverRequest
                 self.send_heartbeat_to_peer(state)?;
-                let _ =
-                    self.update_dpu_ha_scope_table_with_params(state, HaRole::SwitchingToActive.as_str_name());
+                let _ = self.update_dpu_ha_scope_table_with_params(state, HaRole::SwitchingToActive.as_str_name());
                 let switchover_id = self
                     .base
                     .get_npu_ha_scope_state(state.internal())
                     .and_then(|s| s.switchover_id)
                     .unwrap_or_default();
-                let _ = self.send_switchover_request_to_peer(
-                    state,
-                    &switchover_id,
-                    MessageMetaFlags::Syn,
-                    false,
-                );
+                let _ = self.send_switchover_request_to_peer(state, &switchover_id, MessageMetaFlags::Syn, false);
             }
             HaState::SwitchingToStandby => {
                 // Re-activate standby role on DPU

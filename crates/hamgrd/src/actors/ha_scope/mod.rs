@@ -559,8 +559,7 @@ mod test {
             npu_ha_scope_state_pending_active_activation.peer_ha_state =
                 Some(HaState::InitializingToStandby.as_str_name().to_string());
             npu_ha_scope_state_pending_active_activation.peer_term = Some("0".to_string());
-            npu_ha_scope_state_pending_active_activation.local_target_asic_ha_state =
-                Some("active".to_string());
+            npu_ha_scope_state_pending_active_activation.local_target_asic_ha_state = Some("active".to_string());
             npu_ha_scope_state_pending_active_activation.pending_operation_types =
                 Some(vec!["activate_role".to_string()]);
             let npu_ha_scope_state_pending_active_activation_fvs =
@@ -751,8 +750,7 @@ mod test {
             npu_ha_scope_state_pending_standby_activation.peer_ha_state =
                 Some(HaState::Active.as_str_name().to_string());
             npu_ha_scope_state_pending_standby_activation.peer_term = Some("1".to_string());
-            npu_ha_scope_state_pending_standby_activation.local_target_asic_ha_state =
-                Some("standby".to_string());
+            npu_ha_scope_state_pending_standby_activation.local_target_asic_ha_state = Some("standby".to_string());
             npu_ha_scope_state_pending_standby_activation.pending_operation_types =
                 Some(vec!["activate_role".to_string()]);
             let npu_ha_scope_state_pending_standby_activation_fvs =
