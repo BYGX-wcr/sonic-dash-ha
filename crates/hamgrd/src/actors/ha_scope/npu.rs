@@ -279,7 +279,6 @@ impl NpuHaScopeActor {
                 DesiredHaState::Dead => {
                     self.target_ha_scope_state = Some(TargetState::Dead);
                 }
-                _ => {}
             }
             return Ok(HaEvent::DesiredStateChanged);
         }
